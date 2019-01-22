@@ -211,7 +211,7 @@ defmodule Ecto.Adapters.PostgresTest do
   end
 
   test "union and union all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     union_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     union_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -221,7 +221,7 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{UNION (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{UNION (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query = base_query |> union_all(^union_query1) |> union_all(^union_query2) |> plan()
 
@@ -229,11 +229,11 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{UNION ALL (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{UNION ALL (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "except and except all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     except_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     except_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -243,7 +243,7 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{EXCEPT (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{EXCEPT (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query = base_query |> except_all(^except_query1) |> except_all(^except_query2) |> plan()
 
@@ -251,11 +251,11 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{EXCEPT ALL (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{EXCEPT ALL (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "intersect and intersect all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     intersect_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     intersect_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -265,7 +265,7 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{INTERSECT (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{INTERSECT (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query =
       base_query |> intersect_all(^intersect_query1) |> intersect_all(^intersect_query2) |> plan()
@@ -274,7 +274,7 @@ defmodule Ecto.Adapters.PostgresTest do
              ~s{SELECT s0."x" FROM "schema" AS s0 } <>
                ~s{INTERSECT ALL (SELECT s0."y" FROM "schema" AS s0 ORDER BY s0."y" LIMIT 40 OFFSET 20) } <>
                ~s{INTERSECT ALL (SELECT s0."z" FROM "schema" AS s0 ORDER BY s0."z" LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0."x" LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "limit and offset" do
@@ -473,7 +473,6 @@ defmodule Ecto.Adapters.PostgresTest do
             |> union(^union)
             |> union_all(^union_all)
             |> order_by([], fragment("?", ^5))
-            |> order_by([], ^:x)
             |> limit([], ^6)
             |> offset([], ^7)
             |> plan()
@@ -484,7 +483,7 @@ defmodule Ecto.Adapters.PostgresTest do
       "GROUP BY $6, $7 HAVING ($8) AND ($9) " <>
       "UNION (SELECT s0.\"id\", $10 FROM \"schema1\" AS s0 WHERE ($11)) " <>
       "UNION ALL (SELECT s0.\"id\", $12 FROM \"schema2\" AS s0 WHERE ($13)) " <>
-      "ORDER BY $14, s0.\"x\" LIMIT $15 OFFSET $16"
+      "ORDER BY $14 LIMIT $15 OFFSET $16"
 
     assert all(query) == String.trim(result)
   end
@@ -922,6 +921,13 @@ defmodule Ecto.Adapters.PostgresTest do
     assert query == ~s{INSERT INTO "schema" ("x","y") VALUES ($1,$2) ON CONFLICT (\"id\") DO UPDATE SET "x" = EXCLUDED."x","y" = EXCLUDED."y"}
   end
 
+  test "insert with query" do
+    query = from("schema", select: [:id]) |> plan(:all)
+    query = insert(nil, "schema", [:x, :y, :z], [[:x, {query, 3}, :z], [nil, {query, 2}, :z]], {:raise, [], []}, [:id])
+
+    assert query == ~s{INSERT INTO "schema" ("x","y","z") VALUES ($1,(SELECT s0."id" FROM "schema" AS s0),$5),(DEFAULT,(SELECT s0."id" FROM "schema" AS s0),$8) RETURNING "id"}
+  end
+
   test "update" do
     query = update(nil, "schema", [:x, :y], [id: 1], [])
     assert query == ~s{UPDATE "schema" SET "x" = $1, "y" = $2 WHERE "id" = $3}
@@ -1047,7 +1053,8 @@ defmodule Ecto.Adapters.PostgresTest do
                {:add, :category_7, %Reference{table: :categories, on_update: :nilify_all}, []},
                {:add, :category_8, %Reference{table: :categories, on_delete: :nilify_all, on_update: :update_all}, [null: false]},
                {:add, :category_9, %Reference{table: :categories, on_delete: :restrict}, []},
-               {:add, :category_10, %Reference{table: :categories, on_update: :restrict}, []}]}
+               {:add, :category_10, %Reference{table: :categories, on_update: :restrict}, []},
+               {:add, :category_11, %Reference{table: :categories, prefix: "foo", on_update: :restrict}, []}]}
 
     assert execute_ddl(create) == ["""
     CREATE TABLE "posts" ("id" serial,
@@ -1062,6 +1069,7 @@ defmodule Ecto.Adapters.PostgresTest do
     "category_8" bigint NOT NULL CONSTRAINT "posts_category_8_fkey" REFERENCES "categories"("id") ON DELETE SET NULL ON UPDATE CASCADE,
     "category_9" bigint CONSTRAINT "posts_category_9_fkey" REFERENCES "categories"("id") ON DELETE RESTRICT,
     "category_10" bigint CONSTRAINT "posts_category_10_fkey" REFERENCES "categories"("id") ON UPDATE RESTRICT,
+    "category_11" bigint CONSTRAINT "posts_category_11_fkey" REFERENCES "foo"."categories"("id") ON UPDATE RESTRICT,
     PRIMARY KEY ("id"))
     """ |> remove_newlines]
   end
@@ -1225,7 +1233,9 @@ defmodule Ecto.Adapters.PostgresTest do
               {:modify, :status, :string, from: :integer},
               {:modify, :user_id, :integer, from: %Reference{table: :users}},
               {:modify, :group_id, %Reference{table: :groups, column: :gid}, from: %Reference{table: :groups}},
-              {:remove, :summary}]}
+              {:remove, :summary},
+              {:remove, :body, :text, []},
+              {:remove, :space_id, %Reference{table: :author}, []}]}
 
     assert execute_ddl(alter) == ["""
     ALTER TABLE "posts"
@@ -1245,7 +1255,10 @@ defmodule Ecto.Adapters.PostgresTest do
     DROP CONSTRAINT "posts_group_id_fkey",
     ALTER COLUMN "group_id" TYPE bigint,
     ADD CONSTRAINT "posts_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "groups"("gid"),
-    DROP COLUMN "summary"
+    DROP COLUMN "summary",
+    DROP COLUMN "body",
+    DROP CONSTRAINT "posts_space_id_fkey",
+    DROP COLUMN "space_id"
     """ |> remove_newlines]
   end
 

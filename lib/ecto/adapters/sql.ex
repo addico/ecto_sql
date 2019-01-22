@@ -1,3 +1,19 @@
+defmodule Telemetry do
+  @moduledoc false
+
+  def attach(name, event, mod, fun, config) do
+    IO.warn "Telemetry.attach(name, event, mod, fun, config) is deprecated in favor of " <>
+              ":telemetry.attach(name, event, &mod.fun/4, config)"
+    :telemetry.attach(name, event, &apply(mod, fun, [&1, &2, &3, &4]), config)
+  end
+
+  def attach_many(name, events, mod, fun, config) do
+    IO.warn "Telemetry.attach_many(name, events, mod, fun, config) is deprecated in favor of " <>
+              ":telemetry.attach_many(name, events, &mod.fun/4, config)"
+    :telemetry.attach_many(name, events, &apply(mod, fun, [&1, &2, &3, &4]), config)
+  end
+end
+
 defmodule Ecto.Adapters.SQL do
   @moduledoc """
   This application provides functionality for working with
@@ -22,12 +38,9 @@ defmodule Ecto.Adapters.SQL do
 
   To interface with migrations, developers typically use mix tasks:
 
-    * [`mix ecto.migrations`](`Mix.Tasks.Ecto.Migrations`) -
-      lists all available migrations and their status
-    * [`mix ecto.migrate`](`Mix.Tasks.Ecto.Migrate`) -
-      runs a migration
-    * [`mix ecto.rollback`](`Mix.Tasks.Ecto.Rollback`) -
-      rolls back a previously run migration
+    * `mix ecto.migrations` - lists all available migrations and their status
+    * `mix ecto.migrate` - runs a migration
+    * `mix ecto.rollback` - rolls back a previously run migration
 
   If you want to run migrations programatically, see `Ecto.Migrator`.
 
@@ -43,27 +56,33 @@ defmodule Ecto.Adapters.SQL do
   structure and make it reproducible from within Ecto. This can be
   achieved with two Mix tasks:
 
-    * [`mix ecto.load`](`Mix.Tasks.Ecto.Load`) -
-      loads an existing structure into the database
-    * [`mix ecto.rollback`](`Mix.Tasks.Ecto.Rollback`) -
-      dumps the existing database structure to the filesystem
+    * `mix ecto.load` - loads an existing structure into the database
+    * `mix ecto.dump` - dumps the existing database structure to the filesystem
 
-  For creating and dropping databases, see [`mix ecto.create`](`Mix.Tasks.Ecto.Create`)
-  and [`mix ecto.drop`](`Mix.Tasks.Ecto.Drop`) that are included as part
-  of Ecto.
+  For creating and dropping databases, see `mix ecto.create`
+  and `mix ecto.drop` that are included as part of Ecto.
 
   ## Custom adapters
 
   Developers can implement their own SQL adapters by using
-  `Ecto.Adapters.SQL` and implementing the callbacks required
-  by this module and the ones from `Ecto.Adapters.SQL.Connection`
-  for handling connections and performing queries. The connection
-  handling and pooling for SQL adapter should be built using the
-  `DBConnection` library.
+  `Ecto.Adapters.SQL` and by implementing the callbacks required
+  by `Ecto.Adapters.SQL.Connection`  for handling connections and
+  performing queries. The connection handling and pooling for SQL
+  adapters should be built using the `DBConnection` library.
+
+  When using `Ecto.Adapters.SQL`, the following options are required:
+
+    * `:driver` (required) - the database driver library.
+      For example: `:postgrex`
+    * `:migration_lock` - the lock to use on migration locks.
+      For example: "FOR UPDATE". It may also be `nil` (for no lock).
+      The user can still override this by setting `:migration_lock`
+      in the repository configuration
+
   """
 
   @doc false
-  defmacro __using__(adapter) do
+  defmacro __using__(opts) do
     quote do
       @behaviour Ecto.Adapter
       @behaviour Ecto.Adapter.Migration
@@ -71,22 +90,24 @@ defmodule Ecto.Adapters.SQL do
       @behaviour Ecto.Adapter.Schema
       @behaviour Ecto.Adapter.Transaction
 
+      opts = unquote(opts)
       @conn __MODULE__.Connection
-      @adapter unquote(adapter)
+      @driver Keyword.fetch!(opts, :driver)
+      @migration_lock Keyword.fetch!(opts, :migration_lock)
 
       @impl true
       defmacro __before_compile__(env) do
-        Ecto.Adapters.SQL.__before_compile__(@adapter, env)
+        Ecto.Adapters.SQL.__before_compile__(@driver, env)
       end
 
       @impl true
       def ensure_all_started(config, type) do
-        Ecto.Adapters.SQL.ensure_all_started(@adapter, config, type)
+        Ecto.Adapters.SQL.ensure_all_started(@driver, config, type)
       end
 
       @impl true
       def init(config) do
-        Ecto.Adapters.SQL.init(@conn, @adapter, config)
+        Ecto.Adapters.SQL.init(@conn, @driver, config)
       end
 
       @impl true
@@ -192,7 +213,7 @@ defmodule Ecto.Adapters.SQL do
 
       @impl true
       def lock_for_migrations(meta, query, opts, fun) do
-        Ecto.Adapters.SQL.lock_for_migrations(meta, query, opts, fun)
+        Ecto.Adapters.SQL.lock_for_migrations(meta, query, opts, @migration_lock, fun)
       end
 
       defoverridable [prepare: 2, execute: 5, insert: 6, update: 6, delete: 4, insert_all: 7,
@@ -259,8 +280,6 @@ defmodule Ecto.Adapters.SQL do
 
     * `:timeout` - The time in milliseconds to wait for a query to finish,
       `:infinity` will wait indefinitely (default: 15_000)
-    * `:pool_timeout` - The time in milliseconds to wait for a call to the pool
-      to finish, `:infinity` will wait indefinitely (default: 5_000)
     * `:log` - When false, does not log the query
     * `:max_rows` - The number of rows to load from the database as we stream
 
@@ -308,9 +327,6 @@ defmodule Ecto.Adapters.SQL do
 
     * `:timeout` - The time in milliseconds to wait for a query to finish,
       `:infinity` will wait indefinitely. (default: 15_000)
-    * `:pool_timeout` - The time in milliseconds to wait for a call to the pool
-      to finish, `:infinity` will wait indefinitely. (default: 5_000)
-
     * `:log` - When false, does not log the query
 
   ## Examples
@@ -359,7 +375,7 @@ defmodule Ecto.Adapters.SQL do
   ## Callbacks
 
   @doc false
-  def __before_compile__(adapter, _env) do
+  def __before_compile__(driver, _env) do
     case Application.get_env(:ecto, :json_library) do
       nil ->
         :ok
@@ -377,9 +393,9 @@ defmodule Ecto.Adapters.SQL do
       value ->
         IO.warn """
         The :json_library configuration for the :ecto application is deprecated.
-        Please configure the :json_library in the adapter instead:
+        Please configure the :json_library in the driver instead:
 
-            config #{inspect adapter}, :json_library, #{inspect value}
+            config #{inspect driver}, :json_library, #{inspect value}
 
         """
     end
@@ -415,21 +431,21 @@ defmodule Ecto.Adapters.SQL do
   end
 
   @doc false
-  def ensure_all_started(adapter, _config, type) do
-    with {:ok, from_adapter} <- Application.ensure_all_started(adapter, type),
+  def ensure_all_started(driver, _config, type) do
+    with {:ok, from_driver} <- Application.ensure_all_started(driver, type),
          # We always return the adapter to force it to be restarted if necessary
-         do: {:ok, List.delete(from_adapter, adapter) ++ [adapter]}
+         do: {:ok, List.delete(from_driver, driver) ++ [driver]}
   end
 
   @doc false
-  def init(connection, adapter, config) do
+  def init(connection, driver, config) do
     unless Code.ensure_loaded?(connection) do
       raise """
       could not find #{inspect connection}.
 
-      Please verify you have added #{inspect adapter} as a dependency:
+      Please verify you have added #{inspect driver} as a dependency:
 
-          {#{inspect adapter}, ">= 0.0.0"}
+          {#{inspect driver}, ">= 0.0.0"}
 
       And remember to recompile Ecto afterwards by cleaning the current build:
 
@@ -443,12 +459,21 @@ defmodule Ecto.Adapters.SQL do
     telemetry = {log, loggers, telemetry_prefix ++ [:query]}
 
     config = adapter_config(config)
-    opts = Keyword.take(config, [:timeout, :pool, :pool_size, :pool_timeout])
+    opts = Keyword.take(config, [:timeout, :pool, :pool_size, :migration_lock])
     meta = %{telemetry: telemetry, sql: connection, opts: opts}
     {:ok, connection.child_spec(config), meta}
   end
 
   defp adapter_config(config) do
+    if Keyword.has_key?(config, :pool_timeout) do
+      message = """
+      :pool_timeout option no longer has an effect and has been replaced with an improved queuing system.
+      See \"Queue config\" in DBConnection.start_link/2 documentation for more information.
+      """
+
+      IO.warn(message)
+    end
+
     config
     |> Keyword.delete(:name)
     |> Keyword.update(:pool, DBConnection.ConnectionPool, &normalize_pool/1)
@@ -510,7 +535,12 @@ defmodule Ecto.Adapters.SQL do
     Enum.map_reduce rows, [], fn fields, params ->
       Enum.map_reduce header, params, fn key, acc ->
         case :lists.keyfind(key, 1, fields) do
-          {^key, value} -> {key, [value|acc]}
+          {^key, {%Ecto.Query{} = query, query_params}} ->
+            {{query, length(query_params)}, Enum.reverse(query_params) ++ acc}
+
+          {^key, value} ->
+            {key, [value | acc]}
+
           false -> {nil, acc}
         end
       end
@@ -681,21 +711,23 @@ defmodule Ecto.Adapters.SQL do
   end
 
   @doc false
-  def lock_for_migrations(meta, query, opts, fun) do
-    %{opts: default_opts} = meta
+  def lock_for_migrations(meta, query, opts, migration_lock, fun) do
+    %{opts: adapter_opts} = meta
 
-    if Keyword.fetch(default_opts, :pool_size) == {:ok, 1} do
-      raise_pool_size_error()
+    if lock = Keyword.get(adapter_opts, :migration_lock, migration_lock) do
+      if Keyword.fetch(adapter_opts, :pool_size) == {:ok, 1} do
+        raise_pool_size_error()
+      end
+
+      {:ok, result} =
+        transaction(meta, opts ++ [log: false, timeout: :infinity], fn ->
+          query |> Map.put(:lock, lock) |> fun.()
+        end)
+
+      result
+    else
+      fun.(query)
     end
-
-    {:ok, result} =
-      transaction(meta, opts ++ [log: false, timeout: :infinity], fn ->
-        query
-        |> Map.put(:lock, Keyword.get(default_opts, :migration_lock, "FOR UPDATE"))
-        |> fun.()
-      end)
-
-    result
   end
 
   defp raise_pool_size_error do
@@ -751,7 +783,7 @@ defmodule Ecto.Adapters.SQL do
     total = (query_time || 0) + (decode_time || 0) + (queue_time || 0)
 
     if event_name = Keyword.get(opts, :telemetry_event, event_name) do
-      Telemetry.execute(event_name, total, entry)
+      :telemetry.execute(event_name, total, entry)
     end
 
     case Keyword.get(opts, :log, log) do
@@ -802,7 +834,7 @@ defmodule Ecto.Adapters.SQL do
 
   defp reset_conn(pool, conn) do
     if conn do
-      Process.put(key(pool), conn)
+      put_conn(pool, conn)
     else
       Process.delete(key(pool))
     end

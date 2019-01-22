@@ -2,7 +2,7 @@ defmodule Ecto.Adapters.Postgres do
   @moduledoc """
   Adapter module for PostgreSQL.
 
-  It uses `postgrex` for communicating to the database.
+  It uses `Postgrex` for communicating to the database.
 
   ## Features
 
@@ -37,7 +37,6 @@ defmodule Ecto.Adapters.Postgres do
     * `:maintenance_database` - Specifies the name of the database to connect to when
       creating or dropping the database. Defaults to `"postgres"`
     * `:pool` - The connection pool module, defaults to `DBConnection.ConnectionPool`
-    * `:pool_timeout` - The default timeout to use on pool calls, defaults to `5000`
     * `:timeout` - The default timeout to use on queries, defaults to `15000`
     * `:ssl` - Set to true if ssl should be used (default: false)
     * `:ssl_opts` - A list of ssl options, see Erlang's `ssl` docs
@@ -56,9 +55,8 @@ defmodule Ecto.Adapters.Postgres do
 
       socket_options: [recbuf: 8192, sndbuf: 8192]
 
-  We also recommend developers to consult the
-  [Postgrex documentation](https://hexdocs.pm/postgrex/Postgrex.html#start_link/1)
-  for a complete listing of all supported options.
+  We also recommend developers to consult the `Postgrex.start_link/1`
+  documentation for a complete listing of all supported options.
 
   ### Storage options
 
@@ -96,7 +94,9 @@ defmodule Ecto.Adapters.Postgres do
   """
 
   # Inherit all behaviour from Ecto.Adapters.SQL
-  use Ecto.Adapters.SQL, :postgrex
+  use Ecto.Adapters.SQL,
+    driver: :postgrex,
+    migration_lock: "FOR UPDATE"
 
   # And provide a custom storage implementation
   @behaviour Ecto.Adapter.Storage

@@ -27,10 +27,12 @@ defmodule Mix.Tasks.Ecto.Migrations do
   ## Command line options
 
     * `-r`, `--repo` - the repo to obtain the status for
+    * `--no-compile` - does not compile applications before running
+    * `--no-deps-check` - does not check depedendencies before running
 
   """
 
-  @doc false
+  @impl true
   def run(args, migrations \\ &Ecto.Migrator.migrations/2, puts \\ &IO.puts/1) do
     repos = parse_repo(args)
 

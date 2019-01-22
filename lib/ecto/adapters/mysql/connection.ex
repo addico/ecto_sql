@@ -127,7 +127,7 @@ if Code.ensure_loaded?(Mariaex) do
     end
 
     @impl true
-    def delete_all(%{select: nil} = query) do
+    def delete_all(query) do
       if query.select do
         error!(nil, ":select is not supported in delete_all by MySQL")
       end
@@ -183,6 +183,7 @@ if Code.ensure_loaded?(Mariaex) do
     end
 
     defp insert_all_value(nil), do: "DEFAULT"
+    defp insert_all_value({%Ecto.Query{} = query, _params_counter}), do: [?(, all(query), ?)]
     defp insert_all_value(_),   do: '?'
 
     @impl true
@@ -700,8 +701,9 @@ if Code.ensure_loaded?(Mariaex) do
         " TO ", quote_table(new_table.prefix, new_table.name)]]
     end
 
-    def execute_ddl({:rename, _table, _current_column, _new_column}) do
-      error!(nil, "MySQL adapter does not support renaming columns")
+    def execute_ddl({:rename, %Table{} = table, current_column, new_column}) do
+      [["ALTER TABLE ", quote_table(table.prefix, table.name), " RENAME COLUMN ",
+        quote_name(current_column), " TO ", quote_name(new_column)]]
     end
 
     def execute_ddl(string) when is_binary(string), do: [string]
@@ -760,6 +762,10 @@ if Code.ensure_loaded?(Mariaex) do
     end
 
     defp column_change(_table, {:remove, name}), do: ["DROP ", quote_name(name)]
+    defp column_change(table, {:remove, name, %Reference{} = ref, _opts}) do
+      [drop_constraint_expr(ref, table, name), "DROP ", quote_name(name)]
+    end
+    defp column_change(_table, {:remove, name, _type, _opts}), do: ["DROP ", quote_name(name)]
 
     defp column_options(opts) do
       default = Keyword.fetch(opts, :default)
@@ -827,14 +833,14 @@ if Code.ensure_loaded?(Mariaex) do
     defp constraint_expr(%Reference{} = ref, table, name),
       do: [", ADD CONSTRAINT ", reference_name(ref, table, name),
            " FOREIGN KEY (", quote_name(name), ?),
-           " REFERENCES ", quote_table(table.prefix, ref.table),
+           " REFERENCES ", quote_table(ref.prefix || table.prefix, ref.table),
            ?(, quote_name(ref.column), ?),
            reference_on_delete(ref.on_delete), reference_on_update(ref.on_update)]
 
     defp reference_expr(%Reference{} = ref, table, name),
       do: [", CONSTRAINT ", reference_name(ref, table, name),
            " FOREIGN KEY (", quote_name(name), ?),
-           " REFERENCES ", quote_table(table.prefix, ref.table),
+           " REFERENCES ", quote_table(ref.prefix || table.prefix, ref.table),
            ?(, quote_name(ref.column), ?),
            reference_on_delete(ref.on_delete), reference_on_update(ref.on_update)]
 

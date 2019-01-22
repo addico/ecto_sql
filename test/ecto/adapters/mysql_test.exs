@@ -160,7 +160,7 @@ defmodule Ecto.Adapters.MySQLTest do
   end
 
   test "union and union all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     union_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     union_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -170,7 +170,7 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{UNION (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{UNION (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query = base_query |> union_all(^union_query1) |> union_all(^union_query2) |> plan()
 
@@ -178,11 +178,11 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{UNION ALL (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{UNION ALL (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "except and except all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     except_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     except_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -192,7 +192,7 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{EXCEPT (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{EXCEPT (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query = base_query |> except_all(^except_query1) |> except_all(^except_query2) |> plan()
 
@@ -200,11 +200,11 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{EXCEPT ALL (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{EXCEPT ALL (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "intersect and intersect all" do
-    base_query = Schema |> select([r], r.x) |> order_by([r], r.x) |> offset(10) |> limit(5)
+    base_query = Schema |> select([r], r.x) |> order_by(fragment("rand")) |> offset(10) |> limit(5)
     intersect_query1 = Schema |> select([r], r.y) |> order_by([r], r.y) |> offset(20) |> limit(40)
     intersect_query2 = Schema |> select([r], r.z) |> order_by([r], r.z) |> offset(30) |> limit(60)
 
@@ -214,7 +214,7 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{INTERSECT (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{INTERSECT (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
 
     query =
       base_query |> intersect_all(^intersect_query1) |> intersect_all(^intersect_query2) |> plan()
@@ -223,7 +223,7 @@ defmodule Ecto.Adapters.MySQLTest do
              ~s{SELECT s0.`x` FROM `schema` AS s0 } <>
                ~s{INTERSECT ALL (SELECT s0.`y` FROM `schema` AS s0 ORDER BY s0.`y` LIMIT 40 OFFSET 20) } <>
                ~s{INTERSECT ALL (SELECT s0.`z` FROM `schema` AS s0 ORDER BY s0.`z` LIMIT 60 OFFSET 30) } <>
-               ~s{ORDER BY s0.`x` LIMIT 5 OFFSET 10}
+               ~s{ORDER BY rand LIMIT 5 OFFSET 10}
   end
 
   test "limit and offset" do
@@ -429,7 +429,6 @@ defmodule Ecto.Adapters.MySQLTest do
             |> union(^union)
             |> union_all(^union_all)
             |> order_by([], fragment("?", ^5))
-            |> order_by([], ^:x)
             |> limit([], ^6)
             |> offset([], ^7)
             |> plan()
@@ -440,7 +439,7 @@ defmodule Ecto.Adapters.MySQLTest do
       "GROUP BY ?, ? HAVING (?) AND (?) " <>
       "UNION (SELECT s0.`id`, ? FROM `schema1` AS s0 WHERE (?)) " <>
       "UNION ALL (SELECT s0.`id`, ? FROM `schema2` AS s0 WHERE (?)) " <>
-      "ORDER BY ?, s0.`x` LIMIT ? OFFSET ?"
+      "ORDER BY ? LIMIT ? OFFSET ?"
 
     assert all(query) == String.trim(result)
   end
@@ -474,6 +473,11 @@ defmodule Ecto.Adapters.MySQLTest do
     assert update_all(query) ==
            ~s{UPDATE `schema` AS s0, `schema2` AS s1 } <>
            ~s{SET s0.`x` = 0 WHERE (s0.`x` = s1.`z`) AND (s0.`x` = 123)}
+
+    assert_raise ArgumentError, ":select is not supported in update_all by MySQL", fn ->
+      query = from(e in Schema, where: e.x == 123, select: e.x)
+      update_all(query)
+    end
   end
 
   test "update all with prefix" do
@@ -500,6 +504,11 @@ defmodule Ecto.Adapters.MySQLTest do
     assert delete_all(query) ==
            ~s{DELETE s0.* FROM `schema` AS s0 } <>
            ~s{INNER JOIN `schema2` AS s1 ON s0.`x` = s1.`z` WHERE (s0.`x` = 123)}
+
+    assert_raise ArgumentError, ":select is not supported in delete_all by MySQL", fn ->
+      query = from(e in Schema, where: e.x == 123, select: e.x)
+      delete_all(query)
+    end
   end
 
   test "delete all with prefix" do
@@ -733,6 +742,10 @@ defmodule Ecto.Adapters.MySQLTest do
 
     query = insert("prefix", "schema", [], [[]], {:raise, [], []}, [])
     assert query == ~s{INSERT INTO `prefix`.`schema` () VALUES ()}
+
+    assert_raise ArgumentError, ":returning is not supported in insert/insert_all by MySQL", fn ->
+      insert(nil, "schema", [:x, :y], [[:x, :y]], {:raise, [], []}, [:x, :y])
+    end
   end
 
   test "insert with on duplicate key" do
@@ -754,6 +767,12 @@ defmodule Ecto.Adapters.MySQLTest do
       update = from("schema", update: [set: [x: ^"foo"]], where: [z: "bar"]) |> plan(:update_all)
       insert(nil, "schema", [:x, :y], [[:x, :y]], {update, [], []}, [])
     end
+  end
+
+  test "insert with query" do
+    select_query = from("schema", select: [:id]) |> plan(:all)
+    query = insert(nil, "schema", [:x, :y, :z], [[:x, {select_query, 2}, :z], [nil, nil, {select_query, 1}]], {:raise, [], []}, [])
+    assert query == ~s{INSERT INTO `schema` (`x`,`y`,`z`) VALUES (?,(SELECT s0.`id` FROM `schema` AS s0),?),(DEFAULT,DEFAULT,(SELECT s0.`id` FROM `schema` AS s0))}
   end
 
   test "update" do
@@ -838,7 +857,8 @@ defmodule Ecto.Adapters.MySQLTest do
                 {:add, :category_1, %Reference{table: :categories, name: :foo_bar}, []},
                 {:add, :category_2, %Reference{table: :categories, on_delete: :nothing}, []},
                 {:add, :category_3, %Reference{table: :categories, on_delete: :delete_all}, [null: false]},
-                {:add, :category_4, %Reference{table: :categories, on_delete: :nilify_all}, []}]}
+                {:add, :category_4, %Reference{table: :categories, on_delete: :nilify_all}, []},
+                {:add, :category_5, %Reference{table: :categories, prefix: :foo, on_delete: :nilify_all}, []}]}
 
     assert execute_ddl(create) == ["""
     CREATE TABLE `posts` (`id` bigint unsigned not null auto_increment,
@@ -852,6 +872,8 @@ defmodule Ecto.Adapters.MySQLTest do
     CONSTRAINT `posts_category_3_fkey` FOREIGN KEY (`category_3`) REFERENCES `categories`(`id`) ON DELETE CASCADE,
     `category_4` BIGINT UNSIGNED,
     CONSTRAINT `posts_category_4_fkey` FOREIGN KEY (`category_4`) REFERENCES `categories`(`id`) ON DELETE SET NULL,
+    `category_5` BIGINT UNSIGNED,
+    CONSTRAINT `posts_category_5_fkey` FOREIGN KEY (`category_5`) REFERENCES `foo`.`categories`(`id`) ON DELETE SET NULL,
     PRIMARY KEY (`id`)) ENGINE = INNODB
     """ |> remove_newlines]
   end
@@ -1020,7 +1042,9 @@ defmodule Ecto.Adapters.MySQLTest do
                 {:modify, :status, :string, from: :integer},
                 {:modify, :user_id, :integer, from: %Reference{table: :users}},
                 {:modify, :group_id, %Reference{table: :groups, column: :gid}, from: %Reference{table: :groups}},
-                {:remove, :summary}]}
+                {:remove, :summary},
+                {:remove, :body, :text, []},
+                {:remove, :space_id, %Reference{table: :author}, []}]}
 
     assert execute_ddl(alter) == ["""
     ALTER TABLE `posts` ADD `title` varchar(100) DEFAULT 'Untitled' NOT NULL,
@@ -1035,7 +1059,10 @@ defmodule Ecto.Adapters.MySQLTest do
     DROP FOREIGN KEY `posts_group_id_fkey`,
     MODIFY `group_id` BIGINT UNSIGNED,
     ADD CONSTRAINT `posts_group_id_fkey` FOREIGN KEY (`group_id`) REFERENCES `groups`(`gid`),
-    DROP `summary`
+    DROP `summary`,
+    DROP `body`,
+    DROP FOREIGN KEY `posts_space_id_fkey`,
+    DROP `space_id`
     """ |> remove_newlines]
   end
 
@@ -1139,6 +1166,16 @@ defmodule Ecto.Adapters.MySQLTest do
   test "rename table with prefix" do
     rename = {:rename, table(:posts, prefix: :foo), table(:new_posts, prefix: :foo)}
     assert execute_ddl(rename) == [~s|RENAME TABLE `foo`.`posts` TO `foo`.`new_posts`|]
+  end
+
+  test "rename column" do
+    rename = {:rename, table(:posts), :given_name, :first_name}
+    assert execute_ddl(rename) == [~s|ALTER TABLE `posts` RENAME COLUMN `given_name` TO `first_name`|]
+  end
+
+  test "rename column in prefixed table" do
+    rename = {:rename, table(:posts, prefix: :foo), :given_name, :first_name}
+    assert execute_ddl(rename) == [~s|ALTER TABLE `foo`.`posts` RENAME COLUMN `given_name` TO `first_name`|]
   end
 
   # Unsupported types and clauses

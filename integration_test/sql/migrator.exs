@@ -7,7 +7,7 @@ defmodule Ecto.Integration.MigratorTest do
   import ExUnit.CaptureLog
   import Ecto.Migrator
 
-  alias Ecto.Integration.PoolRepo
+  alias Ecto.Integration.{TestRepo, PoolRepo}
   alias Ecto.Migration.SchemaMigration
 
   setup do
@@ -19,8 +19,8 @@ defmodule Ecto.Integration.MigratorTest do
     use Ecto.Migration
 
     def change do
-      execute PoolRepo.create_prefix("bad_schema_migrations"),
-              PoolRepo.drop_prefix("bad_schema_migrations")
+      execute TestRepo.create_prefix("bad_schema_migrations"),
+              TestRepo.drop_prefix("bad_schema_migrations")
 
       create table(:schema_migrations, prefix: "bad_schema_migrations") do
         add :version, :string
@@ -157,7 +157,8 @@ defmodule Ecto.Integration.MigratorTest do
 
   test "raises when connection pool is too small" do
     config = Application.fetch_env!(:ecto_sql, PoolRepo)
-    Application.put_env(:ecto_sql, __MODULE__.SingleConnectionRepo, Keyword.put(config, :pool_size, 1))
+    config = Keyword.merge(config, pool_size: 1)
+    Application.put_env(:ecto_sql, __MODULE__.SingleConnectionRepo, config)
 
     defmodule SingleConnectionRepo do
       use Ecto.Repo, otp_app: :ecto_sql, adapter: PoolRepo.__adapter__
@@ -171,6 +172,22 @@ defmodule Ecto.Integration.MigratorTest do
       assert_raise Ecto.MigrationError, exception_message, fn ->
         run(SingleConnectionRepo, path, :up, all: true, log: false)
       end
+    end
+  end
+
+  test "does not raise when connection pool is too small but there is no lock" do
+    config = Application.fetch_env!(:ecto_sql, PoolRepo)
+    config = Keyword.merge(config, pool_size: 1, migration_lock: nil)
+    Application.put_env(:ecto_sql, __MODULE__.SingleConnectionNoLockRepo, config)
+
+    defmodule SingleConnectionNoLockRepo do
+      use Ecto.Repo, otp_app: :ecto_sql, adapter: PoolRepo.__adapter__
+    end
+
+    {:ok, _pid} = SingleConnectionNoLockRepo.start_link
+
+    in_tmp fn path ->
+      run(SingleConnectionNoLockRepo, path, :up, all: true, log: false)
     end
   end
 

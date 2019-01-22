@@ -67,6 +67,40 @@ defmodule Ecto.MigratorTest do
     end
   end
 
+  defmodule MigrationWithCallbacks do
+    use Ecto.Migration
+
+    def after_begin() do
+      execute "after_begin", "after_begin_down"
+    end
+
+    def before_commit() do
+      execute "before_commit", "before_commit_down"
+    end
+
+    def change do
+      create index(:posts, [:foo])
+    end
+  end
+
+  defmodule MigrationWithCallbacksAndNoTransaction do
+    use Ecto.Migration
+
+    @disable_ddl_transaction true
+
+    def after_begin() do
+      execute "after_begin", "after_begin_down"
+    end
+
+    def before_commit() do
+      execute "before_commit", "before_commit_down"
+    end
+
+    def change do
+      create index(:posts, [:foo])
+    end
+  end
+
   defmodule InvalidMigration do
     use Ecto.Migration
   end
@@ -74,11 +108,11 @@ defmodule Ecto.MigratorTest do
   defmodule EmptyModule do
   end
 
-  defmodule TestSchemaRepo do
+  defmodule MigrationSourceRepo do
     use Ecto.Repo, otp_app: :ecto_sql, adapter: EctoSQL.TestAdapter
   end
 
-  Application.put_env(:ecto_sql, TestSchemaRepo, [migration_source: "my_schema_migrations"])
+  Application.put_env(:ecto_sql, MigrationSourceRepo, [migration_source: "my_schema_migrations"])
 
   setup do
     Process.put(:migrated_versions, [1, 2, 3])
@@ -95,7 +129,7 @@ defmodule Ecto.MigratorTest do
 
   test "custom schema migrations table is right" do
     assert SchemaMigration.get_source(TestRepo) == "schema_migrations"
-    assert SchemaMigration.get_source(TestSchemaRepo) == "my_schema_migrations"
+    assert SchemaMigration.get_source(MigrationSourceRepo) == "my_schema_migrations"
   end
 
   test "logs migrations" do
@@ -429,6 +463,41 @@ defmodule Ecto.MigratorTest do
 
     test "version migrations stop even if asked to exceed available" do
       assert run(TestRepo, [{13, ChangeMigration}, {14, UpDownMigration}], :up, to: 15, log: false) == [13, 14]
+    end
+  end
+
+  describe "migration callbacks" do
+    setup do
+      put_test_adapter_config(supports_ddl_transaction?: true)
+    end
+
+    test "both run when in a transaction going up" do
+      log = capture_log(fn ->
+        assert up(TestRepo, 10, MigrationWithCallbacks) == :ok
+      end)
+
+      assert log =~ "after_begin"
+      assert log =~ "before_commit"
+    end
+
+    test "are both run in a transaction going down" do
+      assert up(TestRepo, 10, MigrationWithCallbacks, log: false) == :ok
+
+      log = capture_log(fn ->
+        assert down(TestRepo, 10, MigrationWithCallbacks) == :ok
+      end)
+
+      assert log =~ "after_begin_down"
+      assert log =~ "before_commit_down"
+    end
+
+    test "are not run when the transaction is disabled" do
+      log = capture_log(fn ->
+        assert up(TestRepo, 10, MigrationWithCallbacksAndNoTransaction) == :ok
+      end)
+
+      refute log =~ "after_begin"
+      refute log =~ "before_commit"
     end
   end
 end

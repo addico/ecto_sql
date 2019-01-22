@@ -39,7 +39,7 @@ defmodule Ecto.Migration do
 
   Ecto provides some mix tasks to help developers work with migrations:
 
-    * `mix ecto.gen.migration add_weather_table` - generates a
+    * `mix ecto.gen.migration` - generates a
       migration that the user can fill in with particular commands
     * `mix ecto.migrate` - migrates a repository
     * `mix ecto.rollback` - rolls back a particular migration
@@ -127,25 +127,32 @@ defmodule Ecto.Migration do
 
   For PostgreSQL, Ecto always runs migrations inside a transaction, but that's not
   always desired: for example, you cannot create/drop indexes concurrently inside
-  a transaction (see the [PostgreSQL docs](http://www.postgresql.org/docs/9.2/static/sql-createindex.html#SQL-CREATEINDEX-CONCURRENTLY)).
+  a transaction. Migrations can be forced to run outside a transaction by setting
+  the `@disable_ddl_transaction` module attribute to `true`. See the section about
+  concurrent in `index/3` for more information.
 
-  Migrations can be forced to run outside a transaction by setting the
-  `@disable_ddl_transaction` module attribute to `true`:
+  ### Transaction Callbacks
 
-      defmodule MyRepo.Migrations.CreateIndexes do
-        use Ecto.Migration
-        @disable_ddl_transaction true
+  There are use cases that dictate adding some common behavior after beginning a
+  migration transaction, or before commiting that transaction. For instance, one
+  might desire to set a `lock_timeout` for each lock in the transaction.
 
-        def change do
-          create index("posts", [:slug], concurrently: true)
+  Another way these might be leveraged is by defining a custom migration module
+  so that these callbacks will run for *all* of your migrations, if you have special
+  requirements.
+
+      defmodule MyApp.Migration do
+        defmacro __using__(_) do
+          use Ecto.Migration
+
+          def after_begin() do
+            repo().query! "SET lock_timeout TO '5s'", "SET lock_timeout TO '10s'"
+          end
         end
       end
 
-  Since running migrations outside a transaction can be dangerous, consider
-  performing very few operations in such migrations.
-
-  See the `index/3` function for more information on creating/dropping indexes
-  concurrently.
+  Then in your migrations you can `use MyApp.Migration` to share this behavior
+  among all your migrations.
 
   ## Comments
 
@@ -182,8 +189,11 @@ defmodule Ecto.Migration do
 
           config :app, App.Repo, migration_timestamps: [type: :utc_datetime]
 
-    * `:migration_lock` - By default, Ecto will lock the migration table to handle
-      concurrent migrators using `FOR UPDATE`, but you can configure it via:
+    * `:migration_lock` - By default, Ecto will lock the migration table. This allows
+      multiple nodes to attempt to run migrations at the same time but only one will
+      succeed. However, this does not play well with other features, such as the
+      `:concurrently` option in PostgreSQL indexes. You can disable the `migration_lock`
+      by setting it to `nil`:
 
           config :app, App.Repo, migration_lock: nil
 
@@ -193,6 +203,23 @@ defmodule Ecto.Migration do
           config :app, App.Repo, migration_default_prefix: "my_prefix"
 
   """
+
+  @doc """
+  Migration code to run immediately after the transaction is opened.
+
+  Keep in mind that it is treated like any normal migration code, and should
+  consider both the up *and* down cases of the migration.
+  """
+  @callback after_begin() :: term
+
+  @doc """
+  Migration code to run immediately before the transaction is closed.
+
+  Keep in mind that it is treated like any normal migration code, and should
+  consider both the up *and* down cases of the migration.
+  """
+  @callback before_commit() :: term
+  @optional_callbacks after_begin: 0, before_commit: 0
 
   defmodule Index do
     @moduledoc """
@@ -242,8 +269,8 @@ defmodule Ecto.Migration do
 
     To define a reference in a migration, see `Ecto.Migration.references/2`.
     """
-    defstruct name: nil, table: nil, column: :id, type: :bigserial, on_delete: :nothing, on_update: :nothing
-    @type t :: %__MODULE__{table: String.t, column: atom, type: atom, on_delete: atom, on_update: atom}
+    defstruct name: nil, prefix: nil, table: nil, column: :id, type: :bigserial, on_delete: :nothing, on_update: :nothing
+    @type t :: %__MODULE__{table: String.t, prefix: atom | nil, column: atom, type: atom, on_delete: atom, on_update: atom}
   end
 
   defmodule Constraint do
@@ -519,12 +546,34 @@ defmodule Ecto.Migration do
 
   PostgreSQL supports adding/dropping indexes concurrently (see the
   [docs](http://www.postgresql.org/docs/9.4/static/sql-createindex.html)).
-  In order to take advantage of this, the `:concurrently` option needs to be set
-  to `true` when the index is created/dropped.
+  However, this feature does not work well with the transactions used by
+  Ecto to guarantee integrity during migrations.
 
-  **Note**: in order for the `:concurrently` option to work, the migration must
-  not be run inside a transaction. See the `Ecto.Migration` docs for more
-  information on running migrations outside of a transaction.
+  Therefore, to migrate indexes concurrently, you need to set
+  `@disable_ddl_transaction` in the migration to true, disabling the
+  guarantee that all of the changes in the migration will happen at
+  once:
+
+      defmodule MyRepo.Migrations.CreateIndexes do
+        use Ecto.Migration
+        @disable_ddl_transaction true
+
+        def change do
+          create index("posts", [:slug], concurrently: true)
+        end
+      end
+
+  And you also need to disable the migration lock for that repository:
+
+      config :my_app, MyApp.Repo, migration_lock: nil
+
+  The migration lock is used to guarantee that only one node in a cluster
+  can run migrations. Two nodes may attempt to race each other.
+
+  Since running migrations outside a transaction can be dangerous,
+  consider performing very few operations in migrations that add concurrent
+  indexes. We recommend to run migrations with concurrent indexes in isolation
+  and disable those features only temporarily.
 
   ## Index types
 
@@ -655,6 +704,14 @@ defmodule Ecto.Migration do
   @spec direction :: :up | :down
   def direction do
     Runner.migrator_direction
+  end
+
+  @doc """
+  Gets the migrator repo.
+  """
+  @spec repo :: Ecto.Repo.t
+  def repo do
+    Runner.repo()
   end
 
   @doc """
@@ -854,7 +911,9 @@ defmodule Ecto.Migration do
   Removes a column in a reversible way when altering a table.
 
   `type` and `opts` are exactly the same as in `add/3`, and
-  they are only used when the command is reversed.
+  they are used when the command is reversed.
+
+  If the `type` value is a `%Reference{}`, it is used to remove the constraint.
 
   ## Examples
 
@@ -864,6 +923,7 @@ defmodule Ecto.Migration do
 
   """
   def remove(column, type, opts \\ []) when is_atom(column) do
+    validate_type!(type)
     Runner.subcommand {:remove, column, type, opts}
   end
 
@@ -881,6 +941,8 @@ defmodule Ecto.Migration do
     * `:name` - The name of the underlying reference, which defaults to
       "#{table}_#{column}_fkey".
     * `:column` - The foreign key column name, which defaults to `:id`.
+    * `:prefix` - The prefix for the reference. Defaults to the reference
+      of the table if present, or `nil`.
     * `:type` - The foreign key type, which defaults to `:bigserial`.
     * `:on_delete` - What to do if the referenced entry is deleted. May be
       `:nothing` (default), `:delete_all`, `:nilify_all`, or `:restrict`.

@@ -206,6 +206,10 @@ if Code.ensure_loaded?(Postgrex) do
       intersperse_reduce(values, ?,, counter, fn
         nil, counter ->
           {"DEFAULT", counter}
+
+        {%Ecto.Query{} = query, params_counter}, counter ->
+          {[?(, all(query), ?)], counter + params_counter}
+
         _, counter ->
           {[?$ | Integer.to_string(counter)], counter + 1}
       end)
@@ -876,6 +880,10 @@ if Code.ensure_loaded?(Postgrex) do
     end
 
     defp column_change(_table, {:remove, name}), do: ["DROP COLUMN ", quote_name(name)]
+    defp column_change(table, {:remove, name, %Reference{} = ref, _opts}) do
+      [drop_constraint_expr(ref, table, name), "DROP COLUMN ", quote_name(name)]
+    end
+    defp column_change(_table, {:remove, name, _type, _opts}), do: ["DROP COLUMN ", quote_name(name)]
 
     defp modify_null(name, opts) do
       case Keyword.get(opts, :null) do
@@ -984,13 +992,13 @@ if Code.ensure_loaded?(Postgrex) do
 
     defp reference_expr(%Reference{} = ref, table, name),
       do: [" CONSTRAINT ", reference_name(ref, table, name), " REFERENCES ",
-           quote_table(table.prefix, ref.table), ?(, quote_name(ref.column), ?),
+           quote_table(ref.prefix || table.prefix, ref.table), ?(, quote_name(ref.column), ?),
            reference_on_delete(ref.on_delete), reference_on_update(ref.on_update)]
 
     defp constraint_expr(%Reference{} = ref, table, name),
       do: [", ADD CONSTRAINT ", reference_name(ref, table, name), ?\s,
-           "FOREIGN KEY (", quote_name(name),
-           ") REFERENCES ", quote_table(table.prefix, ref.table), ?(, quote_name(ref.column), ?),
+           "FOREIGN KEY (", quote_name(name), ") REFERENCES ",
+           quote_table(ref.prefix || table.prefix, ref.table), ?(, quote_name(ref.column), ?),
            reference_on_delete(ref.on_delete), reference_on_update(ref.on_update)]
 
     defp drop_constraint_expr(%Reference{} = ref, table, name),

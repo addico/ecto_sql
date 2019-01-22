@@ -1,7 +1,7 @@
 defmodule EctoSQL.MixProject do
   use Mix.Project
 
-  @version "3.0.1"
+  @version "3.0.4"
   @adapters ~w(pg mysql)
 
   def project do
@@ -44,8 +44,8 @@ defmodule EctoSQL.MixProject do
 
   defp deps do
     [
-      {:ecto, "~> 3.0.2", ecto_opts()},
-      {:telemetry, "~> 0.2.0"},
+      {:ecto, "~> 3.0.6", ecto_opts()},
+      {:telemetry, "~> 0.3.0"},
 
       # Drivers
       {:db_connection, "~> 2.0"},
