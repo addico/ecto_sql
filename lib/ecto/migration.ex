@@ -70,9 +70,9 @@ defmodule Ecto.Migration do
   However, note that not all commands are reversible. Trying to rollback
   a non-reversible command will raise an `Ecto.MigrationError`.
 
-  A notable command in this regard is `execute/2`, which accepts a pair
-  of plain SQL strings, the first to run on forward migrations (`up/0`)
-  and the second when rolling back (`down/0`).
+  A notable command in this regard is `execute/2`, which is reversible in
+  `change/0` by accepting a pair of plain SQL strings. The first is run on
+  forward migrations (`up/0`) and the second when rolling back (`down/0`).
 
   If `up/0` and `down/0` are implemented in a migration, they take precedence, and
   `change/0` isn't invoked.
@@ -767,20 +767,37 @@ defmodule Ecto.Migration do
     * `:scale` - the scale of a numeric type. Defaults to `0`.
 
   """
-  def add(column, type, opts \\ [])
-
-  def add(column, :datetime, _opts) when is_atom(column) do
-    raise ArgumentError, "the :datetime type in migrations is not supported, " <>
-                         "please use :utc_datetime or :naive_datetime instead"
-  end
-
-  def add(column, type, opts) when is_atom(column) and is_list(opts) do
+  def add(column, type, opts \\ []) when is_atom(column) and is_list(opts) do
     if opts[:scale] && !opts[:precision] do
       raise ArgumentError, "column #{Atom.to_string(column)} is missing precision option"
     end
 
     validate_type!(type)
     Runner.subcommand {:add, column, type, opts}
+  end
+
+  @doc """
+  Adds a column if it not exists yet when altering a table.
+
+  If the `type` value is a `%Reference{}`, it is used to remove the constraint.
+
+  `type` and `opts` are exactly the same as in `add/3`, and
+  they are used when the command is reversed.
+
+  ## Examples
+
+      alter table("posts") do
+        add_if_not_exists :title, :string, default: ""
+      end
+
+  """
+  def add_if_not_exists(column, type, opts \\ []) when is_atom(column) and is_list(opts) do
+    if opts[:scale] && !opts[:precision] do
+      raise ArgumentError, "column #{Atom.to_string(column)} is missing precision option"
+    end
+
+    validate_type!(type)
+    Runner.subcommand {:add_if_not_exists, column, type, opts}
   end
 
   @doc """
@@ -874,14 +891,7 @@ defmodule Ecto.Migration do
       specified.
     * `:scale` - the scale of a numeric type. Defaults to `0`.
   """
-  def modify(column, type, opts \\ [])
-
-  def modify(column, :datetime, _opts) when is_atom(column) do
-    raise ArgumentError, "the :datetime type in migrations is not supported, " <>
-                         "please use :utc_datetime or :naive_datetime instead"
-  end
-
-  def modify(column, type, opts) when is_atom(column) and is_list(opts) do
+  def modify(column, type, opts \\ []) when is_atom(column) and is_list(opts) do
     if opts[:scale] && !opts[:precision] do
       raise ArgumentError, "column #{Atom.to_string(column)} is missing precision option"
     end
@@ -925,6 +935,24 @@ defmodule Ecto.Migration do
   def remove(column, type, opts \\ []) when is_atom(column) do
     validate_type!(type)
     Runner.subcommand {:remove, column, type, opts}
+  end
+
+  @doc """
+  Removes a column only if the column exists when altering the constraint if the reference type is passed
+  once it only has the constraint name on reference structure.
+
+  This command is not reversible as Ecto does not know about column existense before the removal attempt.
+
+  ## Examples
+
+      alter table("posts") do
+        remove_if_exists :title, :string
+      end
+
+  """
+  def remove_if_exists(column, type) when is_atom(column) do
+    validate_type!(type)
+    Runner.subcommand {:remove_if_exists, column, type}
   end
 
   @doc ~S"""
@@ -1010,6 +1038,11 @@ defmodule Ecto.Migration do
   end
 
   # Validation helpers
+  defp validate_type!(:datetime) do
+    raise ArgumentError, "the :datetime type in migrations is not supported, " <>
+                         "please use :utc_datetime or :naive_datetime instead"
+  end
+
   defp validate_type!(type) when is_atom(type) do
     case Atom.to_string(type) do
       "Elixir." <> _ ->
