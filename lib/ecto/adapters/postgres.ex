@@ -44,6 +44,9 @@ defmodule Ecto.Adapters.Postgres do
     * `:prepare` - How to prepare queries, either `:named` to use named queries
       or `:unnamed` to force unnamed queries (default: `:named`)
     * `:socket_options` - Specifies socket configuration
+    * `:show_sensitive_data_on_connection_error` - show connection data and
+      configuration whenever there is an error attempting to connect to the
+      database
 
   The `:socket_options` are particularly useful when configuring the size
   of both send and receive buffers. For example, when Ecto starts with a
@@ -112,8 +115,8 @@ defmodule Ecto.Adapters.Postgres do
 
   # Support arrays in place of IN
   @impl true
-  def dumpers({:embed, _} = type, _),  do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
-  def dumpers({:map, _} = type, _),    do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
+  def dumpers({:embed, _}, type),      do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
+  def dumpers({:map, _}, type),        do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
   def dumpers({:in, sub}, {:in, sub}), do: [{:array, sub}]
   def dumpers(:binary_id, type),       do: [type, Ecto.UUID]
   def dumpers(_, type),                do: [type]

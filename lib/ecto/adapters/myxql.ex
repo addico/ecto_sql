@@ -29,6 +29,9 @@ defmodule Ecto.Adapters.MyXQL do
       via the `mysql` command. For more information, please check
       [MySQL docs](https://dev.mysql.com/doc/en/connecting.html)
     * `:socket_options` - Specifies socket configuration
+    * `:show_sensitive_data_on_connection_error` - show connection data and
+      configuration whenever there is an error attempting to connect to the
+      database
 
   The `:socket_options` are particularly useful when configuring the size
   of both send and receive buffers. For example, when Ecto starts with a
@@ -54,7 +57,7 @@ defmodule Ecto.Adapters.MyXQL do
   to the database, you can use the `:after_connect` configuration. For
   example, in your repository configuration you can add:
 
-    after_connect: {MyXQL, :query!, ["SET variable = value", []]}
+      after_connect: {MyXQL, :query!, ["SET variable = value", []]}
 
   You can also specify your own module that will receive the MyXQL
   connection as argument.
@@ -112,13 +115,13 @@ defmodule Ecto.Adapters.MyXQL do
   ## Custom MySQL types
 
   @impl true
-  def loaders({:embed, _} = type, _), do: [&json_decode/1, &Ecto.Adapters.SQL.load_embed(type, &1)]
-  def loaders({:map, _}, type),       do: [&json_decode/1, &Ecto.Adapters.SQL.load_embed(type, &1)]
-  def loaders(:map, type),            do: [&json_decode/1, type]
-  def loaders(:float, type),          do: [&float_decode/1, type]
-  def loaders(:boolean, type),        do: [&bool_decode/1, type]
-  def loaders(:binary_id, type),      do: [Ecto.UUID, type]
-  def loaders(_, type),               do: [type]
+  def loaders({:embed, _}, type), do: [&json_decode/1, &Ecto.Adapters.SQL.load_embed(type, &1)]
+  def loaders({:map, _}, type),   do: [&json_decode/1, &Ecto.Adapters.SQL.load_embed(type, &1)]
+  def loaders(:map, type),        do: [&json_decode/1, type]
+  def loaders(:float, type),      do: [&float_decode/1, type]
+  def loaders(:boolean, type),    do: [&bool_decode/1, type]
+  def loaders(:binary_id, type),  do: [Ecto.UUID, type]
+  def loaders(_, type),           do: [type]
 
   defp bool_decode(<<0>>), do: {:ok, false}
   defp bool_decode(<<1>>), do: {:ok, true}

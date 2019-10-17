@@ -1,20 +1,18 @@
 defmodule EctoSQL.MixProject do
   use Mix.Project
 
-  @version "3.1.6"
-  @adapters ~w(pg mysql myxql)
+  @version "3.2.0"
+  @adapters ~w(pg myxql)
 
   def project do
     [
       app: :ecto_sql,
       version: @version,
-      elixir: "~> 1.5",
+      elixir: "~> 1.6",
       deps: deps(),
       test_paths: test_paths(System.get_env("ECTO_ADAPTER")),
       xref: [
         exclude: [
-          Mariaex,
-          Ecto.Adapters.MySQL.Connection,
           MyXQL,
           Ecto.Adapters.MyXQL.Connection,
           Postgrex,
@@ -50,9 +48,8 @@ defmodule EctoSQL.MixProject do
       {:telemetry, "~> 0.4.0"},
 
       # Drivers
-      {:db_connection, "~> 2.0"},
+      {:db_connection, "~> 2.1"},
       postgrex_dep(),
-      mariaex_dep(),
       myxql_dep(),
 
       # Bring something in for JSON during tests
@@ -71,7 +68,7 @@ defmodule EctoSQL.MixProject do
     if path = System.get_env("ECTO_PATH") do
       {:ecto, path: path}
     else
-      {:ecto, "~> 3.1.0"}
+      {:ecto, "~> 3.2.0"}
     end
   end
 
@@ -79,15 +76,7 @@ defmodule EctoSQL.MixProject do
     if path = System.get_env("POSTGREX_PATH") do
       {:postgrex, path: path}
     else
-      {:postgrex, "~> 0.14.0 or ~> 0.15.0", optional: true}
-    end
-  end
-
-  defp mariaex_dep do
-    if path = System.get_env("MARIAEX_PATH") do
-      {:mariaex, path: path}
-    else
-      {:mariaex, "~> 0.9.1", optional: true}
+      {:postgrex, "~> 0.15.0", optional: true}
     end
   end
 
@@ -105,7 +94,7 @@ defmodule EctoSQL.MixProject do
   defp package do
     [
       maintainers: ["Eric Meadows-Jönsson", "José Valim", "James Fish", "Michał Muskała"],
-      licenses: ["Apache 2.0"],
+      licenses: ["Apache-2.0"],
       links: %{"GitHub" => "https://github.com/elixir-ecto/ecto_sql"},
       files:
         ~w(.formatter.exs mix.exs README.md CHANGELOG.md lib) ++
@@ -146,7 +135,6 @@ defmodule EctoSQL.MixProject do
         # Ecto.Migrator,
 
         "Built-in adapters": [
-          Ecto.Adapters.MySQL,
           Ecto.Adapters.MyXQL,
           Ecto.Adapters.Postgres
         ],

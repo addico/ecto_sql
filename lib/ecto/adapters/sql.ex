@@ -8,8 +8,7 @@ defmodule Ecto.Adapters.SQL do
   By default, we support the following adapters:
 
     * `Ecto.Adapters.Postgres` for Postgres
-    * `Ecto.Adapters.MyXQL` for MyXQL
-    * `Ecto.Adapters.MySQL` for MySQL (legacy - it will be removed in future versions)
+    * `Ecto.Adapters.MyXQL` for MySQL
 
   ## Migrations
 
@@ -103,16 +102,16 @@ defmodule Ecto.Adapters.SQL do
       end
 
       @impl true
-      def loaders({:embed, _} = type, _), do: [&Ecto.Adapters.SQL.load_embed(type, &1)]
-      def loaders({:map, _} = type, _),   do: [&Ecto.Adapters.SQL.load_embed(type, &1)]
-      def loaders(:binary_id, type),      do: [Ecto.UUID, type]
-      def loaders(_, type),               do: [type]
+      def loaders({:embed, _}, type), do: [&Ecto.Adapters.SQL.load_embed(type, &1)]
+      def loaders({:map, _}, type),   do: [&Ecto.Adapters.SQL.load_embed(type, &1)]
+      def loaders(:binary_id, type),  do: [Ecto.UUID, type]
+      def loaders(_, type),           do: [type]
 
       @impl true
-      def dumpers({:embed, _} = type, _), do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
-      def dumpers({:map, _} = type, _),   do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
-      def dumpers(:binary_id, type),      do: [type, Ecto.UUID]
-      def dumpers(_, type),               do: [type]
+      def dumpers({:embed, _}, type), do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
+      def dumpers({:map, _}, type),   do: [&Ecto.Adapters.SQL.dump_embed(type, &1)]
+      def dumpers(:binary_id, type),  do: [type, Ecto.UUID]
+      def dumpers(_, type),           do: [type]
 
       ## Query
 
@@ -403,7 +402,7 @@ defmodule Ecto.Adapters.SQL do
       See `Ecto.Adapters.SQL.query/4` for more information.
       """
       def query(sql, params \\ [], opts \\ []) do
-        Ecto.Adapters.SQL.query(__MODULE__, sql, params, opts)
+        Ecto.Adapters.SQL.query(get_dynamic_repo(), sql, params, opts)
       end
 
       @doc """
@@ -412,7 +411,7 @@ defmodule Ecto.Adapters.SQL do
       See `Ecto.Adapters.SQL.query!/4` for more information.
       """
       def query!(sql, params \\ [], opts \\ []) do
-        Ecto.Adapters.SQL.query!(__MODULE__, sql, params, opts)
+        Ecto.Adapters.SQL.query!(get_dynamic_repo(), sql, params, opts)
       end
 
       @doc """
@@ -421,16 +420,14 @@ defmodule Ecto.Adapters.SQL do
       See `Ecto.Adapters.SQL.to_sql/3` for more information.
       """
       def to_sql(operation, queryable) do
-        Ecto.Adapters.SQL.to_sql(operation, __MODULE__, queryable)
+        Ecto.Adapters.SQL.to_sql(operation, get_dynamic_repo(), queryable)
       end
     end
   end
 
   @doc false
   def ensure_all_started(driver, _config, type) do
-    with {:ok, from_driver} <- Application.ensure_all_started(driver, type),
-         # We always return the adapter to force it to be restarted if necessary
-         do: {:ok, List.delete(from_driver, driver) ++ [driver]}
+    Application.ensure_all_started(driver, type)
   end
 
   @pool_opts [:timeout, :pool, :pool_size, :migration_lock] ++
@@ -499,9 +496,14 @@ defmodule Ecto.Adapters.SQL do
         load_embed(type, value)
 
       type, value ->
-        case Ecto.Type.cast(type, value) do
-          {:ok, _} = ok -> ok
-          _ -> :error
+        case Ecto.Type.embed_as(type, :json) do
+          :self ->
+            case Ecto.Type.cast(type, value) do
+              {:ok, _} = ok -> ok
+              _ -> :error
+            end
+          :dump ->
+            Ecto.Type.load(type, value)
         end
     end)
   end
@@ -509,8 +511,14 @@ defmodule Ecto.Adapters.SQL do
   @doc false
   def dump_embed(type, value) do
     Ecto.Type.dump(type, value, fn
-      {:embed, _} = type, value -> dump_embed(type, value)
-      _type, value -> {:ok, value}
+      {:embed, _} = type, value ->
+        dump_embed(type, value)
+
+      type, value ->
+        case Ecto.Type.embed_as(type, :json) do
+          :self -> {:ok, value}
+          :dump -> Ecto.Type.dump(type, value)
+        end
     end)
   end
 
