@@ -1,10 +1,8 @@
-defmodule Ecto.Adapters.MySQL do
+defmodule Ecto.Adapters.MyXQL do
   @moduledoc """
   Adapter module for MySQL.
 
-  It uses `Mariaex` for communicating to the database.
-  Currently it supports old MySQL versions but upcoming
-  Ecto releases will require 5.7+.
+  It uses `MyXQL` for communicating to the database.
 
   ## Options
 
@@ -14,13 +12,10 @@ defmodule Ecto.Adapters.MySQL do
 
   ### Connection options
 
-    * `:hostname` - Server hostname
-    * `:socket_dir` - Connect to MySQL via UNIX sockets in the given directory
-      The socket name is derived based on the port. This is the preferred method
-      for configuring sockets and it takes precedence over the hostname. If you are
-      connecting to a socket outside of the Postgres convention, use `:socket` instead;
+    * `:protocol` - Set to `:socket` for using UNIX domain socket, or `:tcp` for TCP
+      (default: `:socket`)
     * `:socket` - Connect to MySQL via UNIX sockets in the given path.
-      This option takes precedence over the `:hostname` and `:socket_dir`
+    * `:hostname` - Server hostname
     * `:port` - Server port (default: 3306)
     * `:username` - Username
     * `:password` - User password
@@ -28,13 +23,12 @@ defmodule Ecto.Adapters.MySQL do
     * `:pool` - The connection pool module, defaults to `DBConnection.ConnectionPool`
     * `:ssl` - Set to true if ssl should be used (default: false)
     * `:ssl_opts` - A list of ssl options, see Erlang's `ssl` docs
-    * `:parameters` - Keyword list of connection parameters
     * `:connect_timeout` - The timeout for establishing new connections (default: 5000)
-    * `:socket_options` - Specifies socket configuration
-    * `:cli_protocol` - The protocol used for the mysql client connection (default: tcp).
+    * `:cli_protocol` - The protocol used for the mysql client connection (default: `"tcp"`).
       This option is only used for `mix ecto.load` and `mix ecto.dump`,
       via the `mysql` command. For more information, please check
       [MySQL docs](https://dev.mysql.com/doc/en/connecting.html)
+    * `:socket_options` - Specifies socket configuration
 
   The `:socket_options` are particularly useful when configuring the size
   of both send and receive buffers. For example, when Ecto starts with a
@@ -45,7 +39,7 @@ defmodule Ecto.Adapters.MySQL do
 
       socket_options: [recbuf: 8192, sndbuf: 8192]
 
-  We also recommend developers to consult the `Mariaex.start_link/1` documentation
+  We also recommend developers to consult the `MyXQL.start_link/1` documentation
   for a complete listing of all supported options.
 
   ### Storage options
@@ -60,9 +54,9 @@ defmodule Ecto.Adapters.MySQL do
   to the database, you can use the `:after_connect` configuration. For
   example, in your repository configuration you can add:
 
-    after_connect: {Mariaex, :query!, ["SET variable = value", []]}
+    after_connect: {MyXQL, :query!, ["SET variable = value", []]}
 
-  You can also specify your own module that will receive the Mariaex
+  You can also specify your own module that will receive the MyXQL
   connection as argument.
 
   ## Limitations
@@ -71,10 +65,6 @@ defmodule Ecto.Adapters.MySQL do
   needs to be aware of.
 
   ### Engine
-
-  Since Ecto uses transactions, MySQL users running old versions
-  (5.1 and before) must ensure their tables use the InnoDB engine
-  as the default (MyISAM) does not support transactions.
 
   Tables created by Ecto are guaranteed to use InnoDB, regardless
   of the MySQL version.
@@ -112,30 +102,14 @@ defmodule Ecto.Adapters.MySQL do
 
   # Inherit all behaviour from Ecto.Adapters.SQL
   use Ecto.Adapters.SQL,
-    driver: :mariaex,
+    driver: :myxql,
     migration_lock: "FOR UPDATE"
-
-  defmacro __before_compile__(env) do
-    message = """
-      Ecto.Adapters.MySQL is deprecated in favour of Ecto.Adapters.MyXQL
-      which uses the new MyXQL driver. To switch your repo to that adapter do:
-
-          use Ecto.Repo,
-            otp_app: :myapp,
-            adapter: Ecto.Adpaters.MyXQL
-      """
-
-    IO.warn(message, Macro.Env.stacktrace(env))
-    super(env)
-  end
 
   # And provide a custom storage implementation
   @behaviour Ecto.Adapter.Storage
   @behaviour Ecto.Adapter.Structure
 
   ## Custom MySQL types
-
-  # TODO: Remove json encoding/decoding when maps are supported in the adapter
 
   @impl true
   def loaders({:embed, _} = type, _), do: [&json_decode/1, &Ecto.Adapters.SQL.load_embed(type, &1)]
@@ -155,18 +129,16 @@ defmodule Ecto.Adapters.MySQL do
   defp float_decode(%Decimal{} = decimal), do: {:ok, Decimal.to_float(decimal)}
   defp float_decode(x), do: {:ok, x}
 
-  defp json_decode(x) when is_binary(x),
-    do: {:ok, Application.get_env(:mariaex, :json_library, Jason).decode!(x)}
-  defp json_decode(x),
-    do: {:ok, x}
+  defp json_decode(x) when is_binary(x), do: {:ok, MyXQL.json_library().decode!(x)}
+  defp json_decode(x), do: {:ok, x}
 
   ## Storage API
 
   @impl true
   def storage_up(opts) do
     database = Keyword.fetch!(opts, :database) || raise ":database is nil in repository configuration"
-    charset  = opts[:charset] || "utf8"
-    opts     = Keyword.put(opts, :skip_database, true)
+    opts = Keyword.delete(opts, :database)
+    charset = opts[:charset] || "utf8"
 
     command =
       ~s(CREATE DATABASE `#{database}` DEFAULT CHARACTER SET = #{charset})
@@ -175,7 +147,7 @@ defmodule Ecto.Adapters.MySQL do
     case run_query(command, opts) do
       {:ok, _} ->
         :ok
-      {:error, %{mariadb: %{code: 1007}}} ->
+      {:error, %{mysql: %{name: :ER_DB_CREATE_EXISTS}}} ->
         {:error, :already_up}
       {:error, error} ->
         {:error, Exception.message(error)}
@@ -190,14 +162,15 @@ defmodule Ecto.Adapters.MySQL do
   @impl true
   def storage_down(opts) do
     database = Keyword.fetch!(opts, :database) || raise ":database is nil in repository configuration"
+    opts = Keyword.delete(opts, :database)
     command = "DROP DATABASE `#{database}`"
 
     case run_query(command, opts) do
       {:ok, _} ->
         :ok
-      {:error, %{mariadb: %{code: 1008}}} ->
+      {:error, %{mysql: %{name: :ER_DB_DROP_EXISTS}}} ->
         {:error, :already_down}
-      {:error, %{mariadb: %{code: 1049}}} ->
+      {:error, %{mysql: %{name: :ER_BAD_DB_ERROR}}} ->
         {:error, :already_down}
       {:exit, :killed} ->
         {:error, :already_down}
@@ -219,6 +192,9 @@ defmodule Ecto.Adapters.MySQL do
     key = primary_key!(schema_meta, returning)
     {fields, values} = :lists.unzip(params)
     sql = @conn.insert(prefix, source, fields, [fields], on_conflict, [])
+
+    cache_statement = "ecto_insert_#{source}"
+    opts = [{:cache_statement, cache_statement} | opts]
 
     case Ecto.Adapters.SQL.query(adapter_meta, sql, values ++ query_params, opts) do
       {:ok, %{num_rows: 1, last_insert_id: last_insert_id}} ->
@@ -263,7 +239,7 @@ defmodule Ecto.Adapters.MySQL do
   defp select_versions(table, config) do
     case run_query(~s[SELECT version FROM `#{table}` ORDER BY version], config) do
       {:ok, %{rows: rows}} -> {:ok, Enum.map(rows, &hd/1)}
-      {:error, %{mariadb: %{code: 1146}}} -> {:ok, []}
+      {:error, %{mysql: %{name: :ER_NO_SUCH_TABLE}}} -> {:ok, []}
       {:error, _} = error -> error
       {:exit, exit} -> {:error, exit_to_exception(exit)}
     end
@@ -305,7 +281,7 @@ defmodule Ecto.Adapters.MySQL do
   ## Helpers
 
   defp run_query(sql, opts) do
-    {:ok, _} = Application.ensure_all_started(:mariaex)
+    {:ok, _} = Application.ensure_all_started(:myxql)
 
     opts =
       opts
@@ -316,9 +292,9 @@ defmodule Ecto.Adapters.MySQL do
     {:ok, pid} = Task.Supervisor.start_link
 
     task = Task.Supervisor.async_nolink(pid, fn ->
-      {:ok, conn} = Mariaex.start_link(opts)
+      {:ok, conn} = MyXQL.start_link(opts)
 
-      value = Mariaex.query(conn, sql, [], opts)
+      value = MyXQL.query(conn, sql, [], opts)
       GenServer.stop(conn)
       value
     end)
@@ -338,7 +314,7 @@ defmodule Ecto.Adapters.MySQL do
   end
 
   defp exit_to_exception({%{__struct__: struct} = error, _})
-       when struct in [Mariaex.Error, DBConnection.Error],
+       when struct in [MyXQL.Error, DBConnection.Error],
        do: error
 
   defp exit_to_exception(reason), do: RuntimeError.exception(Exception.format_exit(reason))

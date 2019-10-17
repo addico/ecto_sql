@@ -799,6 +799,11 @@ if Code.ensure_loaded?(Postgrex) do
       end
     end
 
+    @impl true
+    def table_exists_query(table) do
+      {"SELECT true FROM information_schema.tables WHERE table_name = $1 AND table_schema = current_schema() LIMIT 1", [table]}
+    end
+
     # From https://www.postgresql.org/docs/9.3/static/protocol-error-fields.html.
     defp ddl_log_level("DEBUG"), do: :debug
     defp ddl_log_level("LOG"), do: :info

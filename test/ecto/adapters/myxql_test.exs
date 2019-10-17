@@ -1,10 +1,10 @@
-defmodule Ecto.Adapters.MySQLTest do
+defmodule Ecto.Adapters.MyXQLTest do
   use ExUnit.Case, async: true
 
   import Ecto.Query
 
   alias Ecto.Queryable
-  alias Ecto.Adapters.MySQL.Connection, as: SQL
+  alias Ecto.Adapters.MyXQL.Connection, as: SQL
   alias Ecto.Migration.Reference
 
   defmodule Schema do
@@ -15,10 +15,10 @@ defmodule Ecto.Adapters.MySQLTest do
       field :y, :integer
       field :z, :integer
 
-      has_many :comments, Ecto.Adapters.MySQLTest.Schema2,
+      has_many :comments, Ecto.Adapters.MyXQLTest.Schema2,
         references: :x,
         foreign_key: :z
-      has_one :permalink, Ecto.Adapters.MySQLTest.Schema3,
+      has_one :permalink, Ecto.Adapters.MyXQLTest.Schema3,
         references: :y,
         foreign_key: :id
     end
@@ -28,7 +28,7 @@ defmodule Ecto.Adapters.MySQLTest do
     use Ecto.Schema
 
     schema "schema2" do
-      belongs_to :post, Ecto.Adapters.MySQLTest.Schema,
+      belongs_to :post, Ecto.Adapters.MyXQLTest.Schema,
         references: :x,
         foreign_key: :z
     end
@@ -43,7 +43,7 @@ defmodule Ecto.Adapters.MySQLTest do
   end
 
   defp plan(query, operation \\ :all) do
-    {query, _params} = Ecto.Adapter.Queryable.plan_query(operation, Ecto.Adapters.MySQL, query)
+    {query, _params} = Ecto.Adapter.Queryable.plan_query(operation, Ecto.Adapters.MyXQL, query)
     query
   end
 
@@ -905,31 +905,16 @@ defmodule Ecto.Adapters.MySQLTest do
     """ |> remove_newlines]
   end
 
-  test "create table with a map column, and an empty map default" do
-    create = {:create, table(:posts),
-              [
-                {:add, :a, :map, [default: %{}]}
-              ]
-            }
-    assert execute_ddl(create) == [~s|CREATE TABLE `posts` (`a` text DEFAULT '{}') ENGINE = INNODB|]
-  end
-
   test "create table with a map column, and a map default with values" do
     create = {:create, table(:posts),
               [
                 {:add, :a, :map, [default: %{foo: "bar", baz: "boom"}]}
               ]
             }
-    assert execute_ddl(create) == [~s|CREATE TABLE `posts` (`a` text DEFAULT '{"baz":"boom","foo":"bar"}') ENGINE = INNODB|]
-  end
 
-  test "create table with a map column, and a string default" do
-    create = {:create, table(:posts),
-              [
-                {:add, :a, :map, [default: ~s|{"foo":"bar","baz":"boom"}|]}
-              ]
-            }
-    assert execute_ddl(create) == [~s|CREATE TABLE `posts` (`a` text DEFAULT '{"foo":"bar","baz":"boom"}') ENGINE = INNODB|]
+    assert_raise ArgumentError, ~r/:default is not supported for json columns by MySQL/, fn ->
+      execute_ddl(create)
+    end
   end
 
   test "create table with time columns" do

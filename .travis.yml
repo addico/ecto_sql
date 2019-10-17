@@ -1,6 +1,6 @@
 language: elixir
 elixir:
-  - 1.6.1
+  - 1.8.1
 otp_release:
   - 20.2
 addons:
@@ -29,8 +29,6 @@ dist: trusty
 cache: apt
 matrix:
   include:
-  - otp_release: 18.3
-    elixir: 1.4.5
   - otp_release: 19.3
     elixir: 1.5.3
 env:
@@ -43,6 +41,8 @@ env:
     - ECTO_ADAPTER=pg
     - ECTO_ADAPTER=mysql
     - ECTO_ADAPTER=mysql MYSQLVERSION=5.7
+    - ECTO_ADAPTER=myxql
+    - ECTO_ADAPTER=myxql MYSQLVERSION=5.7
 install:
   - mix local.hex --force
   - mix local.rebar --force

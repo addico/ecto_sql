@@ -1,20 +1,22 @@
 defmodule EctoSQL.MixProject do
   use Mix.Project
 
-  @version "3.0.5"
-  @adapters ~w(pg mysql)
+  @version "3.1.6"
+  @adapters ~w(pg mysql myxql)
 
   def project do
     [
       app: :ecto_sql,
       version: @version,
-      elixir: "~> 1.4",
+      elixir: "~> 1.5",
       deps: deps(),
       test_paths: test_paths(System.get_env("ECTO_ADAPTER")),
       xref: [
         exclude: [
           Mariaex,
           Ecto.Adapters.MySQL.Connection,
+          MyXQL,
+          Ecto.Adapters.MyXQL.Connection,
           Postgrex,
           Ecto.Adapters.Postgres.Connection
         ]
@@ -44,16 +46,17 @@ defmodule EctoSQL.MixProject do
 
   defp deps do
     [
-      {:ecto, "~> 3.0.6", ecto_opts()},
-      {:telemetry, "~> 0.3.0"},
+      ecto_dep(),
+      {:telemetry, "~> 0.4.0"},
 
       # Drivers
       {:db_connection, "~> 2.0"},
-      {:postgrex, "~> 0.14.0", optional: true},
-      {:mariaex, "~> 0.9.1", optional: true},
+      postgrex_dep(),
+      mariaex_dep(),
+      myxql_dep(),
 
       # Bring something in for JSON during tests
-      {:jason, ">= 0.0.0", only: :test},
+      {:jason, ">= 0.0.0", only: [:test, :docs]},
 
       # Docs
       {:ex_doc, "~> 0.19", only: :docs},
@@ -64,11 +67,35 @@ defmodule EctoSQL.MixProject do
     ]
   end
 
-  defp ecto_opts do
+  defp ecto_dep do
     if path = System.get_env("ECTO_PATH") do
-      [path: path]
+      {:ecto, path: path}
     else
-      []
+      {:ecto, "~> 3.1.0"}
+    end
+  end
+
+  defp postgrex_dep do
+    if path = System.get_env("POSTGREX_PATH") do
+      {:postgrex, path: path}
+    else
+      {:postgrex, "~> 0.14.0 or ~> 0.15.0", optional: true}
+    end
+  end
+
+  defp mariaex_dep do
+    if path = System.get_env("MARIAEX_PATH") do
+      {:mariaex, path: path}
+    else
+      {:mariaex, "~> 0.9.1", optional: true}
+    end
+  end
+
+  defp myxql_dep do
+    if path = System.get_env("MYXQL_PATH") do
+      {:myxql, path: path}
+    else
+      {:myxql, "~> 0.2.0", optional: true}
     end
   end
 
@@ -120,6 +147,7 @@ defmodule EctoSQL.MixProject do
 
         "Built-in adapters": [
           Ecto.Adapters.MySQL,
+          Ecto.Adapters.MyXQL,
           Ecto.Adapters.Postgres
         ],
         "Adapter specification": [

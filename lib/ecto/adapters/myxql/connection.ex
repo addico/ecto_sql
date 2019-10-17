@@ -1,6 +1,5 @@
-if Code.ensure_loaded?(Mariaex) do
-
-  defmodule Ecto.Adapters.MySQL.Connection do
+if Code.ensure_loaded?(MyXQL) do
+  defmodule Ecto.Adapters.MyXQL.Connection do
     @moduledoc false
     @behaviour Ecto.Adapters.SQL.Connection
 
@@ -8,26 +7,25 @@ if Code.ensure_loaded?(Mariaex) do
 
     @impl true
     def child_spec(opts) do
-      opts
-      |> Keyword.put_new(:datetime, :structs)
-      |> Mariaex.child_spec()
+      MyXQL.child_spec(opts)
     end
 
     ## Query
 
     @impl true
     def prepare_execute(conn, name, sql, params, opts) do
-      Mariaex.prepare_execute(conn, name, sql, map_params(params), opts)
+      MyXQL.prepare_execute(conn, name, sql, params, opts)
     end
 
     @impl true
     def query(conn, sql, params, opts) do
-      Mariaex.query(conn, sql, map_params(params), opts)
+      opts = Keyword.put_new(opts, :query_type, :binary_then_text)
+      MyXQL.query(conn, sql, params, opts)
     end
 
     @impl true
     def execute(conn, %{ref: ref} = query, params, opts) do
-      case Mariaex.execute(conn, query, map_params(params), opts) do
+      case MyXQL.execute(conn, query, params, opts) do
         {:ok, %{ref: ^ref}, result} ->
           {:ok, result}
 
@@ -41,29 +39,18 @@ if Code.ensure_loaded?(Mariaex) do
 
     @impl true
     def stream(conn, sql, params, opts) do
-      Mariaex.stream(conn, sql, params, opts)
-    end
-
-    defp map_params(params) do
-      Enum.map params, fn
-        %{__struct__: _} = value ->
-          value
-        %{} = value ->
-          json_encode!(value)
-        value ->
-          value
-      end
+      MyXQL.stream(conn, sql, params, opts)
     end
 
     @impl true
-    def to_constraints(%Mariaex.Error{mariadb: %{code: 1062, message: message}}) do
+    def to_constraints(%MyXQL.Error{mysql: %{name: :ER_DUP_ENTRY}, message: message}) do
       case :binary.split(message, " for key ") do
         [_, quoted] -> [unique: strip_quotes(quoted)]
         _ -> []
       end
     end
-    def to_constraints(%Mariaex.Error{mariadb: %{code: code, message: message}})
-        when code in [1451, 1452] do
+    def to_constraints(%MyXQL.Error{mysql: %{name: name}, message: message})
+        when name in [:ER_ROW_IS_REFERENCED_2, :ER_NO_REFERENCED_ROW_2] do
       case :binary.split(message, [" CONSTRAINT ", " FOREIGN KEY "], [:global]) do
         [_, quoted, _] -> [foreign_key: strip_quotes(quoted)]
         _ -> []
@@ -802,12 +789,10 @@ if Code.ensure_loaded?(Mariaex) do
       do: [" DEFAULT '", escape_string(literal), ?']
     defp default_expr({:ok, literal}) when is_number(literal) or is_boolean(literal),
       do: [" DEFAULT ", to_string(literal)]
-    defp default_expr({:ok, %{} = map}) do
-      default = json_encode!(map)
-      [" DEFAULT ", [?', escape_string(default), ?']]
-    end
     defp default_expr({:ok, {:fragment, expr}}),
       do: [" DEFAULT ", expr]
+    defp default_expr({:ok, value}) when is_map(value),
+      do: error!(nil, ":default is not supported for json columns by MySQL")
     defp default_expr(:error),
       do: []
 
@@ -964,8 +949,8 @@ if Code.ensure_loaded?(Mariaex) do
     defp ecto_to_db(:float, _query),               do: "double"
     defp ecto_to_db(:binary, _query),              do: "blob"
     defp ecto_to_db(:uuid, _query),                do: "binary(16)" # MySQL does not support uuid
-    defp ecto_to_db(:map, _query),                 do: "text"
-    defp ecto_to_db({:map, _}, _query),            do: "text"
+    defp ecto_to_db(:map, _query),                 do: "json"
+    defp ecto_to_db({:map, _}, _query),            do: "json"
     defp ecto_to_db(:time_usec, _query),           do: "time"
     defp ecto_to_db(:utc_datetime, _query),        do: "datetime"
     defp ecto_to_db(:utc_datetime_usec, _query),   do: "datetime"
@@ -978,11 +963,6 @@ if Code.ensure_loaded?(Mariaex) do
     end
     defp error!(query, message) do
       raise Ecto.QueryError, query: query, message: message
-    end
-
-    defp json_encode!(value) do
-      library = Application.get_env(:mariaex, :json_library, Jason)
-      IO.iodata_to_binary(library.encode_to_iodata!(value))
     end
   end
 end

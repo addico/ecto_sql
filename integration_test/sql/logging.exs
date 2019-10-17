@@ -5,10 +5,10 @@ defmodule Ecto.Integration.LoggingTest do
   alias Ecto.Integration.Post
 
   test "log entry is sent to telemetry" do
-    log = fn event_name, latency, entry ->
+    log = fn event_name, measurement, metadata ->
       assert Enum.at(event_name, -1) == :query
-      assert %{result: {:ok, _}} = entry
-      assert latency == entry.query_time + entry.decode_time + entry.queue_time
+      assert %{result: {:ok, _res}} = metadata
+      assert measurement.total_time == measurement.query_time + measurement.decode_time + measurement.queue_time
       send(self(), :logged)
     end
 
@@ -18,9 +18,9 @@ defmodule Ecto.Integration.LoggingTest do
   end
 
   test "log entry sent under another event name" do
-    log = fn [:custom], latency, entry ->
-      assert %{result: {:ok, _}} = entry
-      assert latency == entry.query_time + entry.decode_time + entry.queue_time
+    log = fn [:custom], measurements, metadata ->
+      assert %{result: {:ok, _res}} = metadata
+      assert measurements.total_time == measurements.query_time + measurements.decode_time + measurements.queue_time
       send(self(), :logged)
     end
 
@@ -33,6 +33,12 @@ defmodule Ecto.Integration.LoggingTest do
     Process.put(:telemetry, fn _, _ -> raise "never called" end)
     _ = TestRepo.all(Post, telemetry_event: nil)
     refute_received :logged
+  end
+
+  test "log entry when some measurements are nil" do
+    assert ExUnit.CaptureLog.capture_log(fn ->
+             TestRepo.query("BEG", [], log: :error)
+           end) =~ "[error]"
   end
 
   test "log entry with custom log level" do
