@@ -7,7 +7,7 @@ Application.put_env(:ecto_sql, :lock_for_update, "FOR UPDATE")
 
 # Configure PG connection
 Application.put_env(:ecto_sql, :pg_test_url,
-  "ecto://" <> (System.get_env("PG_URL") || "postgres:postgres@localhost")
+  "ecto://" <> (System.get_env("PG_URL") || "postgres:postgres@127.0.0.1")
 )
 
 Code.require_file "../support/repo.exs", __DIR__
@@ -50,7 +50,7 @@ defmodule Ecto.Integration.PoolRepo do
 end
 
 # Load support files
-ecto = Mix.Project.deps_paths[:ecto]
+ecto = Mix.Project.deps_paths()[:ecto]
 Code.require_file "#{ecto}/integration_test/support/schemas.exs", __DIR__
 Code.require_file "../support/migration.exs", __DIR__
 
@@ -65,8 +65,8 @@ end
 {:ok, _} = Ecto.Adapters.Postgres.ensure_all_started(TestRepo.config(), :temporary)
 
 # Load up the repository, start it, and run migrations
-_   = Ecto.Adapters.Postgres.storage_down(TestRepo.config)
-:ok = Ecto.Adapters.Postgres.storage_up(TestRepo.config)
+_   = Ecto.Adapters.Postgres.storage_down(TestRepo.config())
+:ok = Ecto.Adapters.Postgres.storage_up(TestRepo.config())
 
 {:ok, _pid} = TestRepo.start_link()
 {:ok, _pid} = PoolRepo.start_link()

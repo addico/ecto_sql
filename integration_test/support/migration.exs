@@ -20,6 +20,7 @@ defmodule Ecto.Integration.Migration do
       add :public, :boolean
       add :cost, :decimal, precision: 2, scale: 1
       add :visits, :integer
+      add :wrapped_visits, :integer
       add :intensity, :float
       add :author_id, :integer
       add :posted, :date
@@ -88,7 +89,7 @@ defmodule Ecto.Integration.Migration do
       add :permalink_id, references(:permalinks)
     end
 
-    unless :array_type in ExUnit.configuration[:exclude] do
+    unless :array_type in ExUnit.configuration()[:exclude] do
       create table(:tags) do
         add :ints,  {:array, :integer}
         add :uuids, {:array, :uuid}, default: []

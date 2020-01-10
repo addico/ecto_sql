@@ -322,7 +322,7 @@ defmodule Ecto.Adapters.SQL do
       {:ok, %{rows: [[42]], num_rows: 1}}
 
   """
-  @spec query(Ecto.Repo.t | Ecto.Adapter.adapter_meta, String.t, [term], Keyword.t) ::
+  @spec query(pid() | Ecto.Repo.t | Ecto.Adapter.adapter_meta, String.t, [term], Keyword.t) ::
               {:ok, %{:rows => nil | [[term] | binary],
                       :num_rows => non_neg_integer,
                       optional(atom) => any}}
@@ -772,6 +772,7 @@ defmodule Ecto.Adapters.SQL do
       connection_time: query_time,
       decode_time: decode_time,
       pool_time: queue_time,
+      idle_time: idle_time,
       result: result,
       query: query
     } = entry
@@ -786,11 +787,14 @@ defmodule Ecto.Adapters.SQL do
         value -> value
       end)
 
+    acc =
+      if idle_time, do: [idle_time: idle_time], else: []
+
     measurements =
       log_measurements(
         [query_time: query_time, decode_time: decode_time, queue_time: queue_time],
         0,
-        []
+        acc
       )
 
     metadata = %{
@@ -857,6 +861,7 @@ defmodule Ecto.Adapters.SQL do
       log_time("db", measurements, :query_time, true),
       log_time("decode", measurements, :decode_time, false),
       log_time("queue", measurements, :queue_time, false),
+      log_time("idle", measurements, :idle_time, true),
       ?\n,
       query,
       ?\s,

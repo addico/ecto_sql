@@ -1,7 +1,7 @@
 defmodule EctoSQL.MixProject do
   use Mix.Project
 
-  @version "3.2.0"
+  @version "3.3.1"
   @adapters ~w(pg myxql)
 
   def project do
@@ -48,7 +48,7 @@ defmodule EctoSQL.MixProject do
       {:telemetry, "~> 0.4.0"},
 
       # Drivers
-      {:db_connection, "~> 2.1"},
+      {:db_connection, "~> 2.2"},
       postgrex_dep(),
       myxql_dep(),
 
@@ -68,7 +68,7 @@ defmodule EctoSQL.MixProject do
     if path = System.get_env("ECTO_PATH") do
       {:ecto, path: path}
     else
-      {:ecto, "~> 3.2.0"}
+      {:ecto, "~> 3.3"}
     end
   end
 
@@ -84,7 +84,7 @@ defmodule EctoSQL.MixProject do
     if path = System.get_env("MYXQL_PATH") do
       {:myxql, path: path}
     else
-      {:myxql, "~> 0.2.0", optional: true}
+      {:myxql, "~> 0.3.0", optional: true}
     end
   end
 

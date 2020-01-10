@@ -110,6 +110,40 @@ defmodule Ecto.MigratorTest do
     end
   end
 
+  defmodule ExecuteOneAnonymousFunctionMigration do
+    use Ecto.Migration
+
+    require Logger
+
+    def change do
+      execute(fn -> Logger.info("This should fail on rollback.") end)
+    end
+  end
+
+  defmodule ExecuteTwoAnonymousFunctionsMigration do
+    use Ecto.Migration
+
+    require Logger
+
+    @disable_ddl_transaction true
+
+    @migrate_first "select 'This is a first part of ecto.migrate';"
+    @migrate_middle "select 'In the middle of ecto.migrate';"
+    @migrate_second "select 'This is a second part of ecto.migrate';"
+    @rollback_first "select 'This is a first part of ecto.rollback';"
+    @rollback_middle "select 'In the middle of ecto.rollback';"
+    @rollback_second "select 'This is a second part of ecto.rollback';"
+
+    def change do
+      execute(@migrate_first, @rollback_second)
+      execute(&execute_up/0, &execute_down/0)
+      execute(@migrate_second, @rollback_first)
+    end
+
+    defp execute_up, do: Logger.info(@migrate_middle)
+    defp execute_down, do: Logger.info(@rollback_middle)
+  end
+
   defmodule InvalidMigration do
     use Ecto.Migration
   end
@@ -119,6 +153,19 @@ defmodule Ecto.MigratorTest do
 
   defmodule MigrationSourceRepo do
     use Ecto.Repo, otp_app: :ecto_sql, adapter: EctoSQL.TestAdapter
+  end
+
+  defmodule EmptyUpDownMigration do
+    use Ecto.Migration
+
+    def up, do: flush()
+    def down, do: flush()
+  end
+
+  defmodule EmptyChangeMigration do
+    use Ecto.Migration
+
+    def change, do: flush()
   end
 
   Application.put_env(:ecto_sql, MigrationSourceRepo, [migration_source: "my_schema_migrations"])
@@ -154,6 +201,41 @@ defmodule Ecto.MigratorTest do
       end
     end
     """
+  end
+
+  test "execute one anonymous function" do
+    module = ExecuteOneAnonymousFunctionMigration
+    num = System.unique_integer([:positive])
+    capture_log(fn -> :ok = up(TestRepo, num, module, [log: false]) end)
+    message = "no function clause matching in Ecto.Migration.Runner.command/1"
+    assert_raise(FunctionClauseError, message, fn -> down(TestRepo, num, module, [log: false]) end)
+  end
+
+  test "execute two anonymous functions" do
+    module = ExecuteTwoAnonymousFunctionsMigration
+    num = System.unique_integer([:positive])
+    args = [TestRepo, num, module, [log: :info]]
+
+    for {name, direction} <- [migrate: :up, rollback: :down] do
+      output = capture_log(fn -> :ok = apply(Ecto.Migrator, direction, args) end)
+      lines = String.split(output, "\n")
+      assert Enum.at(lines, 1) =~ "== Running #{num} #{inspect(module)}.change/0"
+      assert Enum.at(lines, 3) =~ ~s[execute "select 'This is a first part of ecto.#{name}';"]
+      assert Enum.at(lines, 5) =~ "select 'In the middle of ecto.#{name}';"
+      assert Enum.at(lines, 7) =~ ~s[execute "select 'This is a second part of ecto.#{name}';"]
+      assert Enum.at(lines, 9) =~ ~r"Migrated #{num} in \d.\ds"
+    end
+  end
+
+  test "flush" do
+    num = System.unique_integer([:positive])
+    assert :ok == up(TestRepo, num, EmptyUpDownMigration, log: false)
+    assert :ok == down(TestRepo, num, EmptyUpDownMigration, log: false)
+    assert :ok == up(TestRepo, num, EmptyChangeMigration, log: false)
+    message = "calling flush() inside change when doing rollback is not supported."
+    assert_raise(RuntimeError, message, fn ->
+      down(TestRepo, num, EmptyChangeMigration, log: false)
+    end)
   end
 
   test "custom schema migrations table is right" do

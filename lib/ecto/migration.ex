@@ -34,7 +34,7 @@ defmodule Ecto.Migration do
   usually the timestamp of when the migration was created. The NAME
   must also be unique and it quickly identifies what the migration
   does. For example, if you need to track the "weather" in your system,
-  you can start a new file at "priv/repo/migraitons/2019041714000_add_weather_table.exs"
+  you can start a new file at "priv/repo/migrations/2019041714000_add_weather_table.exs"
   that will have the following contents:
 
       defmodule MyRepo.Migrations.AddWeatherTable do
@@ -147,22 +147,26 @@ defmodule Ecto.Migration do
   field type with database-specific options, you can pass atoms containing
   these options like `:"int unsigned"`, `:"time without time zone"`, etc.
 
-  ## Flushing
+  ## Executing and flushing
 
-  Instructions inside migrations are not executed immedidately. Instead
-  they are performed once the relevant `up`, `change`, or `down` callback
+  Instructions inside of migrations are not executed immediately. Instead
+  they are performed after the relevant `up`, `change`, or `down` callback
   terminates.
 
-  However, under certain situations, you may want to guarantee all of the
-  previous steps have been executed before continuing. This is generally
-  useful in case you need to apply some changes to the table before
-  continuing with the migration. This can be done with `flush/0`:
+  However, in some situations you may want to guarantee that all of the
+  previous steps have been executed before continuing. This is useful when 
+  you need to apply a set of changes to the table before continuing with the 
+  migration. This can be done with `flush/0`:
 
       def up do
         ...
         flush()
         ...
       end
+
+  However `flush/0` will raise if it would be called from `change` function when doing a rollback.
+  To avoid that we recommend to use `execute/2` with anonymous functions instead.
+  For more information and example usage please take a look at `execute/2` function.
 
   ## Comments
 
@@ -209,6 +213,10 @@ defmodule Ecto.Migration do
       migrations, but you can configure it via:
 
           config :app, App.Repo, migration_default_prefix: "my_prefix"
+
+    * `:priv` - the priv diretory for the repo with the location of important assets,
+      such as migrations. For a repository named `MyApp.FooRepo`, `:priv` defaults to
+      "priv/foo_repo" and migrations should be placed at "priv/foo_repo/migrations"
 
     * `:start_apps_before_migration` - A list of applications to be started before
       running migrations. Used by `Ecto.Migrator.with_repo/3` and the migration tasks:
@@ -430,17 +438,12 @@ defmodule Ecto.Migration do
       Runner.start_command({unquote(command), Ecto.Migration.__prefix__(table)})
 
       if table.primary_key do
-        opts = Runner.repo_config(:migration_primary_key, [])
-        opts = Keyword.put(opts, :primary_key, true)
-
-        {name, opts} = Keyword.pop(opts, :name, :id)
-        {type, opts} = Keyword.pop(opts, :type, :bigserial)
-
+        {name, type, opts} = Ecto.Migration.__primary_key__()
         add(name, type, opts)
       end
 
       unquote(block)
-      Runner.end_command
+      Runner.end_command()
       table
     end
   end
@@ -462,7 +465,7 @@ defmodule Ecto.Migration do
       table = %Table{} = unquote(object)
       Runner.start_command({:alter, Ecto.Migration.__prefix__(table)})
       unquote(block)
-      Runner.end_command
+      Runner.end_command()
     end
   end
 
@@ -470,7 +473,7 @@ defmodule Ecto.Migration do
   Creates one of the following:
 
     * an index
-    * a table with only an `:id` field
+    * a table with only the :id primary key
     * a constraint
 
   When reversing (in a `change/0` running backwards), indexes are only dropped
@@ -520,7 +523,8 @@ defmodule Ecto.Migration do
   defp do_create(table, command) do
     columns =
       if table.primary_key do
-        [{:add, :id, :bigserial, primary_key: true}]
+        {name, type, opts} = Ecto.Migration.__primary_key__()
+        [{:add, name, type, opts}]
       else
         []
       end
@@ -587,7 +591,9 @@ defmodule Ecto.Migration do
       creation.
     * `:engine` - customizes the table storage for supported databases. For MySQL,
       the default is InnoDB.
-    * `:prefix` - the prefix for the table.
+    * `:prefix` - the prefix for the table. This prefix will automatically be used
+      for all constraints and references defined for this table unless explicitly
+      overridden in said constraints/references.
     * `:options` - provide custom options that will be appended after the generated
       statement. For example, "WITH", "INHERITS", or "ON COMMIT" clauses.
 
@@ -738,7 +744,7 @@ defmodule Ecto.Migration do
   end
 
   @doc """
-  Executes arbitrary SQL or a keyword command.
+  Executes arbitrary SQL, anonymous function or a keyword command.
 
   Reversible commands can be defined by calling `execute/2`.
 
@@ -748,8 +754,9 @@ defmodule Ecto.Migration do
 
       execute create: "posts", capped: true, size: 1024
 
+      execute(fn -> repo().query!("select 'Anonymous function query …';", [], [log: :info]) end)
   """
-  def execute(command) when is_binary(command) or is_list(command) do
+  def execute(command) when is_binary(command) or is_function(command, 0) or is_list(command) do
     Runner.execute command
   end
 
@@ -764,11 +771,20 @@ defmodule Ecto.Migration do
 
   ## Examples
 
-      execute "CREATE EXTENSION postgres_fdw", "DROP EXTENSION postgres_fdw"
+      defmodule MyApp.MyMigration do
+        use Ecto.Migration
 
+        def change do
+          execute "CREATE EXTENSION postgres_fdw", "DROP EXTENSION postgres_fdw"
+          execute(&execute_up/0, &execute_down/0)
+        end
+
+        defp execute_up, do: repo().query!("select 'Up query …';", [], [log: :info])
+        defp execute_down, do: repo().query!("select 'Down query …';", [], [log: :info])
+      end
   """
-  def execute(up, down) when (is_binary(up) or is_list(up)) and
-                             (is_binary(down) or is_list(down)) do
+  def execute(up, down) when (is_binary(up) or is_function(up, 0) or is_list(up)) and
+                             (is_binary(down) or is_function(down, 0) or is_list(down)) do
     Runner.execute %Command{up: up, down: down}
   end
 
@@ -777,7 +793,7 @@ defmodule Ecto.Migration do
   """
   @spec direction :: :up | :down
   def direction do
-    Runner.migrator_direction
+    Runner.migrator_direction()
   end
 
   @doc """
@@ -792,7 +808,7 @@ defmodule Ecto.Migration do
   Gets the migrator prefix.
   """
   def prefix do
-    Runner.prefix
+    Runner.prefix()
   end
 
   @doc """
@@ -1035,8 +1051,9 @@ defmodule Ecto.Migration do
     * `:name` - The name of the underlying reference, which defaults to
       "#{table}_#{column}_fkey".
     * `:column` - The foreign key column name, which defaults to `:id`.
-    * `:prefix` - The prefix for the reference. Defaults to the reference
-      of the table if present, or `nil`.
+    * `:prefix` - The prefix for the reference. Defaults to the prefix
+      defined by the block's `table/2` struct (the "products" table in
+      the example above), or `nil`.
     * `:type` - The foreign key type, which defaults to `:bigserial`.
     * `:on_delete` - What to do if the referenced entry is deleted. May be
       `:nothing` (default), `:delete_all`, `:nilify_all`, or `:restrict`.
@@ -1093,14 +1110,15 @@ defmodule Ecto.Migration do
     struct(%Constraint{table: table, name: name}, opts)
   end
 
-  @doc """
-  Executes queue migration commands.
-
-  Reverses the order in which commands are executed when doing a rollback
-  on a `change/0` function and resets the commands queue.
-  """
-  def flush do
-    Runner.flush
+  @doc "Executes queue migration commands."
+  defmacro flush do
+    quote do
+      if direction() == :down and not function_exported?(__MODULE__, :down, 0) do
+        raise "calling flush() inside change when doing rollback is not supported."
+      else
+        Runner.flush()
+      end
+    end
   end
 
   # Validation helpers
@@ -1166,5 +1184,14 @@ defmodule Ecto.Migration do
         raise Ecto.MigrationError,  message:
           "the :prefix option `#{prefix}` does match the migrator prefix `#{runner_prefix}`"
     end
+  end
+
+  @doc false
+  def __primary_key__() do
+    opts = Runner.repo_config(:migration_primary_key, [])
+    opts = Keyword.put(opts, :primary_key, true)
+    {name, opts} = Keyword.pop(opts, :name, :id)
+    {type, opts} = Keyword.pop(opts, :type, :bigserial)
+    {name, type, opts}
   end
 end

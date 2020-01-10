@@ -1,4 +1,4 @@
-Code.require_file "../support/file_helpers.exs", __DIR__
+Code.require_file("../support/file_helpers.exs", __DIR__)
 
 defmodule Ecto.Integration.StorageTest do
   use ExUnit.Case
@@ -16,9 +16,10 @@ defmodule Ecto.Integration.StorageTest do
   end
 
   def wrong_params do
-    Keyword.merge params(),
-      [username: "randomuser",
-       password: "password1234"]
+    Keyword.merge(params(),
+      username: "randomuser",
+      password: "password1234"
+    )
   end
 
   def drop_database do
@@ -34,8 +35,21 @@ defmodule Ecto.Integration.StorageTest do
   end
 
   def run_mysql(sql, args \\ []) do
-    args = ["-u", params()[:username], "-e", sql | args]
-    System.cmd "mysql", args
+    params = params()
+    env = if password = params[:password], do: [{"MYSQL_PWD", password}], else: []
+
+    args = [
+      "-u",
+      params[:username],
+      "--host",
+      params[:hostname],
+      "--port",
+      to_string(params[:port] || 3306),
+      "-e",
+      sql | args
+    ]
+
+    System.cmd("mysql", args, env: env)
   end
 
   test "storage up (twice in a row)" do
@@ -73,7 +87,9 @@ defmodule Ecto.Integration.StorageTest do
     # Load custom
     dump_path = Path.join(tmp_path(), "custom.sql")
     File.rm(dump_path)
-    {:error, _} = Ecto.Adapters.MyXQL.structure_load(tmp_path(), [dump_path: dump_path] ++ params())
+
+    {:error, _} =
+      Ecto.Adapters.MyXQL.structure_load(tmp_path(), [dump_path: dump_path] ++ params())
 
     # Dump custom
     {:ok, _} = Ecto.Adapters.MyXQL.structure_dump(tmp_path(), [dump_path: dump_path] ++ params())
@@ -86,6 +102,25 @@ defmodule Ecto.Integration.StorageTest do
     assert strip_timestamp(dump) == strip_timestamp(File.read!(dump_path))
   after
     drop_database()
+  end
+
+  test "storage status is up when database is created" do
+    create_database()
+    assert :up == Ecto.Adapters.MyXQL.storage_status(params())
+  after
+    drop_database()
+  end
+
+  test "storage status is down when database is not created" do
+    create_database()
+    drop_database()
+    assert :down == Ecto.Adapters.MyXQL.storage_status(params())
+  end
+
+  test "storage status is an error when wrong credentials are passed" do
+    assert ExUnit.CaptureLog.capture_log(fn ->
+             assert {:error, _} = Ecto.Adapters.MyXQL.storage_status(wrong_params())
+           end) =~ "(1045) (ER_ACCESS_DENIED_ERROR)"
   end
 
   defmodule Migration do

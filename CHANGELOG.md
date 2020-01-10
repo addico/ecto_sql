@@ -1,8 +1,43 @@
 # Changelog for v3.x
 
+## v3.3.1 (2019-12-15)
+
+### Bug fixes
+
+  * [adapters] Do not leak PIDs on storage commands
+  * [migrations] Use :migration_primary_key in create/1
+
+## v3.3.0 (2019-12-11)
+
+### Enhancements
+
+  * [ecto] Upgrade and support Ecto v3.3
+  * [repo] Include `:idle_time` on telemetry measuremnts
+  * [migration] Support anonymous functions in `Ecto.Migration.execute/2`
+
+### Bug fixes
+
+  * [migration] Ensure that flush() will raise on rollback if called from `change/0`
+
+## v3.2.2 (2019-11-25)
+
+### Enhancements
+
+  * [mysql] Support myxql v0.3
+
+## v3.2.1 (2019-11-02)
+
+### Enhancements
+
+  * [migration] Support anonymous functions in execute
+
+### Bug fixes
+
+  * [mix ecto.create] Change default charset in MyXQL to utf8mb4
+
 ## v3.2.0 (2019-09-07)
 
-This new version requires Elixir v1.6+.
+This new version requires Elixir v1.6+. Note also the previously soft-deprecated `Ecto.Adapters.MySQL` has been removed in favor of `Ecto.Adapters.MyXQL`. We announced the intent to remove `Ecto.Adapters.MySQL` back in v3.0 and `Ecto.Adapters.MyXQL` has been tested since then and ready for prime time since v3.1.
 
 ### Enhancements
 

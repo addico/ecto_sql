@@ -328,7 +328,7 @@ defmodule Ecto.Migrator do
       result
     end
   catch kind, reason ->
-    send_and_receive(parent, ref, {kind, reason, System.stacktrace})
+    send_and_receive(parent, ref, {kind, reason, System.stacktrace()})
   end
 
   defp send_and_receive(parent, ref, value) do
@@ -393,6 +393,8 @@ defmodule Ecto.Migrator do
     * `:log` - the level to use for logging. Defaults to `:info`.
       Can be any of `Logger.level/0` values or a boolean.
     * `:prefix` - the prefix to run the migrations on
+    * `:dynamic_repo` - the name of the Repo supervisor process.
+      See `c:Ecto.Repo.put_dynamic_repo/1`.
 
   """
   @spec run(Ecto.Repo.t, binary | [{integer, module}], atom, Keyword.t) :: [integer]
@@ -656,7 +658,7 @@ defmodule Ecto.Migrator do
 
         The full error report is shown below.
         """
-        reraise error, System.stacktrace
+        reraise error, System.stacktrace()
     end
   end
 

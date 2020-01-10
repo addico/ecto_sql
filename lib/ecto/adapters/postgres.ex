@@ -166,6 +166,21 @@ defmodule Ecto.Adapters.Postgres do
     end
   end
 
+  @impl Ecto.Adapter.Storage
+  def storage_status(opts) do
+    database = Keyword.fetch!(opts, :database) || raise ":database is nil in repository configuration"
+    maintenance_database = Keyword.get(opts, :maintenance_database, @default_maintenance_database)
+    opts = Keyword.put(opts, :database, maintenance_database)
+
+    check_database_query = "SELECT datname FROM pg_catalog.pg_database WHERE datname = '#{database}'"
+
+    case run_query(check_database_query, opts) do
+      {:ok, %{num_rows: 0}} -> :down
+      {:ok, %{num_rows: _num_rows}} -> :up
+      other -> {:error, other}
+    end
+  end
+
   @impl true
   def supports_ddl_transaction? do
     true
@@ -238,9 +253,7 @@ defmodule Ecto.Adapters.Postgres do
       |> Keyword.put(:backoff_type, :stop)
       |> Keyword.put(:max_restarts, 0)
 
-    {:ok, pid} = Task.Supervisor.start_link
-
-    task = Task.Supervisor.async_nolink(pid, fn ->
+    task = Task.Supervisor.async_nolink(Ecto.Adapters.SQL.StorageSupervisor, fn ->
       {:ok, conn} = Postgrex.start_link(opts)
 
       value = Postgrex.query(conn, sql, [], opts)

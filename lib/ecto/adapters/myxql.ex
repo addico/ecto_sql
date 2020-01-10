@@ -47,7 +47,7 @@ defmodule Ecto.Adapters.MyXQL do
 
   ### Storage options
 
-    * `:charset` - the database encoding (default: "utf8")
+    * `:charset` - the database encoding (default: "utf8mb4")
     * `:collation` - the collation order
     * `:dump_path` - where to place dumped structures
 
@@ -88,6 +88,23 @@ defmodule Ecto.Adapters.MyXQL do
   MySQL does not support migrations inside transactions as it
   automatically commits after some commands like CREATE TABLE.
   Therefore MySQL migrations does not run inside transactions.
+
+  ## Old MySQL versions
+
+  ### JSON support
+
+  MySQL introduced a native JSON type in v5.7.8, if your server is
+  using this version or higher, you may use `:map` type for your
+  column in migration:
+
+      add :some_field, :map
+
+  If you're using older server versions, use a `TEXT` field instead:
+
+      add :some_field, :text
+
+  in either case, the adapter will automatically encode/decode the
+  value from JSON.
 
   ### usec in datetime
 
@@ -141,7 +158,7 @@ defmodule Ecto.Adapters.MyXQL do
   def storage_up(opts) do
     database = Keyword.fetch!(opts, :database) || raise ":database is nil in repository configuration"
     opts = Keyword.delete(opts, :database)
-    charset = opts[:charset] || "utf8"
+    charset = opts[:charset] || "utf8mb4"
 
     command =
       ~s(CREATE DATABASE `#{database}` DEFAULT CHARACTER SET = #{charset})
@@ -179,6 +196,20 @@ defmodule Ecto.Adapters.MyXQL do
         {:error, :already_down}
       {:exit, exit} ->
         {:error, exit_to_exception(exit)}
+    end
+  end
+  
+  @impl Ecto.Adapter.Storage
+  def storage_status(opts) do
+    database = Keyword.fetch!(opts, :database) || raise ":database is nil in repository configuration"
+    opts = Keyword.delete(opts, :database)
+
+    check_database_query = "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '#{database}'"
+
+    case run_query(check_database_query, opts) do
+      {:ok, %{num_rows: 0}} -> :down
+      {:ok, %{num_rows: _num_rows}} -> :up
+      other -> {:error, other}
     end
   end
 
@@ -292,9 +323,7 @@ defmodule Ecto.Adapters.MyXQL do
       |> Keyword.put(:backoff_type, :stop)
       |> Keyword.put(:max_restarts, 0)
 
-    {:ok, pid} = Task.Supervisor.start_link
-
-    task = Task.Supervisor.async_nolink(pid, fn ->
+    task = Task.Supervisor.async_nolink(Ecto.Adapters.SQL.StorageSupervisor, fn ->
       {:ok, conn} = MyXQL.start_link(opts)
 
       value = MyXQL.query(conn, sql, [], opts)
